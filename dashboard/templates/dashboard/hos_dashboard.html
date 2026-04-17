@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">Welcome {{ request.user.first_name }} to the Head of School Dashboard</h2>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-users me-2"></i> My Team
+    </div>
+    <div class="card-body">
+        {% for team in hod_teams %}
+        <h5 class="mt-3" style="color: var(--gesm-blue);">
+            <i class="fas fa-chalkboard-teacher me-2"></i>
+            {{ team.hod.first_name }} {{ team.hod.last_name }} — {{ team.hod.department }}
+        </h5>
+        <table class="table table-hover mb-4">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for teacher in team.teachers %}
+                <tr>
+                    <td>{{ teacher.first_name }} {{ teacher.last_name }}</td>
+                    <td>{{ teacher.email }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="2" class="text-center text-muted">No teachers in this department.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% empty %}
+        <p class="text-muted">No departments found.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-calendar-alt me-2"></i> Leave Requests
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Teacher</th>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for leave in leaves %}
+                <tr>
+                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
+                    <td>{{ leave.leave_type }}</td>
+                    <td>{{ leave.start_leave }}</td>
+                    <td>{{ leave.end_leave }}</td>
+                    <td>
+                        {% if leave.status == 'approved' %}
+                            <span class="badge-approved">Approved</span>
+                        {% elif leave.status == 'rejected' %}
+                            <span class="badge-rejected">Rejected</span>
+                        {% else %}
+                            <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

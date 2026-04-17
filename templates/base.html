@@ -1,0 +1,238 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GESM Leave Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --gesm-blue: #1a3a6b;
+            --gesm-yellow: #f5c518;
+            --gesm-light: #f8f9fa;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        .navbar {
+            background-color: var(--gesm-blue) !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .navbar-brand img {
+            height: 45px;
+        }
+
+        .navbar-brand span {
+            color: var(--gesm-yellow);
+            font-weight: 700;
+            font-size: 1.2rem;
+            margin-left: 10px;
+        }
+
+        .nav-link {
+            color: white !important;
+            font-weight: 500;
+        }
+
+        .nav-link:hover {
+            color: var(--gesm-yellow) !important;
+        }
+
+        .sidebar {
+            background-color: var(--gesm-blue);
+            min-height: calc(100vh - 70px);
+            padding-top: 20px;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255,255,255,0.8) !important;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin: 3px 10px;
+            transition: all 0.3s;
+        }
+
+        .sidebar .nav-link:hover, .sidebar .nav-link.active {
+            background-color: var(--gesm-yellow);
+            color: var(--gesm-blue) !important;
+            font-weight: 600;
+        }
+
+        .sidebar .nav-link i {
+            width: 20px;
+            margin-right: 8px;
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background-color: var(--gesm-blue);
+            color: white;
+            border-radius: 12px 12px 0 0 !important;
+            padding: 15px 20px;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background-color: var(--gesm-blue);
+            border-color: var(--gesm-blue);
+        }
+
+        .btn-primary:hover {
+            background-color: #122a52;
+            border-color: #122a52;
+        }
+
+        .btn-warning {
+            background-color: var(--gesm-yellow);
+            border-color: var(--gesm-yellow);
+            color: var(--gesm-blue);
+            font-weight: 600;
+        }
+
+        .table thead {
+            background-color: var(--gesm-blue);
+            color: white;
+        }
+
+        .badge-approved {
+            background-color: #28a745;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .badge-pending {
+            background-color: var(--gesm-yellow);
+            color: var(--gesm-blue);
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .badge-rejected {
+            background-color: #dc3545;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, var(--gesm-blue), #2a5298);
+            color: white;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-card.yellow {
+            background: linear-gradient(135deg, var(--gesm-yellow), #e6b800);
+            color: var(--gesm-blue);
+        }
+
+        .stat-card h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .footer {
+            background-color: var(--gesm-blue);
+            color: rgba(255,255,255,0.7);
+            text-align: center;
+            padding: 15px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+<nav class="navbar navbar-expand-lg">
+    <div class="container-fluid px-4">
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'dashboard' %}">
+            <img src="{% static 'images/logo.png' %}" alt="GESM Logo">
+            <span>GESM Leave Management</span>
+        </a>
+        <div class="ms-auto d-flex align-items-center">
+            <span class="text-white me-3">
+                <i class="fas fa-user-circle me-1"></i>
+                {{ request.user.first_name }} {{ request.user.last_name }}
+            </span>
+            <a href="{% url 'logout' %}" class="btn btn-warning btn-sm">
+                <i class="fas fa-sign-out-alt me-1"></i> Logout
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Main Layout -->
+<div class="container-fluid p-0">
+    <div class="row g-0">
+
+        <!-- Sidebar -->
+        <div class="col-md-2 sidebar">
+            <nav class="nav flex-column mt-2">
+                <a class="nav-link" href="{% url 'dashboard' %}">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                {% if request.user.role == 'teacher' or request.user.role == 'employee' %}
+                <a class="nav-link" href="{% url 'submit_leave' %}">
+                    <i class="fas fa-paper-plane"></i> Submit Leave
+                </a>
+                {% endif %}
+                {% if request.user.role == 'hr' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' or request.user.role == 'head_of_admin' %}
+                <a class="nav-link" href="{% url 'calendar' %}">
+                    <i class="fas fa-calendar-alt"></i> Calendar
+                </a>
+                {% endif %}
+                {% if request.user.role == 'hr' %}
+                <a class="nav-link" href="{% url 'create_admin_user' %}">
+                    <i class="fas fa-user-plus"></i> Create Admin
+                </a>
+                {% endif %}
+            </nav>
+        </div>
+
+        <!-- Content -->
+        <div class="col-md-10 main-content">
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </div>
+
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+    © 2026 GESM Leave Management System
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

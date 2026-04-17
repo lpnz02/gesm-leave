@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+
+{% block content %}
+{% if request.user.role == 'teacher' %}
+    <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Teacher Dashboard
+    {% if request.user.superior %}
+        — {{ request.user.superior.get_full_name }} Department
+    {% endif %}
+    </h2>
+{% else %}
+    <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Employee Dashboard</h2>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-chart-bar me-2"></i> My Leave Balance
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            {% for item in leave_summary %}
+            <div class="col-md-4">
+                <div class="p-3 rounded text-white"
+                     style="background: linear-gradient(135deg,
+                     {% cycle '#1a3a6b' '#e67e22' '#2ecc71' '#9b59b6' '#e74c3c' '#1abc9c' %},
+                     {% cycle '#2a5298' '#d35400' '#27ae60' '#8e44ad' '#c0392b' '#16a085' %});">
+                    <h6 class="fw-bold mb-2">{{ item.type }}</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small>Used</small>
+                        <strong>{{ item.used }} days</strong>
+                    </div>
+                    {% if item.total %}
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small>Total</small>
+                        <strong>{{ item.total }} days</strong>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small>Remaining</small>
+                        <strong>{{ item.remaining }} days</strong>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-white"
+                             style="width: {% if item.remaining > 0 %}{% widthratio item.used item.total 100 %}{% else %}100{% endif %}%">
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small>No limit</small>
+                    </div>
+                    {% endif %}
+                    {% if item.unpaid %}
+                    <div class="mt-2 text-center fw-bold" style="color: #ffeb3b;">
+                        ⚠️ Unpaid Leave
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list me-2"></i> My Leave Requests</span>
+        <a href="{% url 'submit_leave' %}" class="btn btn-warning btn-sm">
+            <i class="fas fa-plus me-1"></i> New Request
+        </a>
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for leave in leaves %}
+                <tr>
+                    <td>{{ leave.leave_type }}</td>
+                    <td>{{ leave.start_leave }}</td>
+                    <td>{{ leave.end_leave }}</td>
+                    <td>
+                        {% if leave.status == 'approved' %}
+                            <span class="badge-approved">Approved</span>
+                        {% elif leave.status == 'rejected' %}
+                            <span class="badge-rejected">Rejected</span>
+                        {% else %}
+                            <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted">No leave requests yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

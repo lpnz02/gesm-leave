@@ -1,0 +1,131 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">
+    <i class="fas fa-calendar-alt me-2"></i>
+    {% if user_role == 'hr' %}
+        Absence Calendar — All Staff
+    {% elif user_role == 'head_of_department' %}
+        Absence Calendar — My Teachers
+    {% elif user_role == 'head_of_school' %}
+        Absence Calendar — All Teachers
+    {% elif user_role == 'head_of_admin' %}
+        Absence Calendar — All Employees
+    {% endif %}
+</h2>
+
+{% if user_role == 'hr' %}
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-filter me-2"></i> Filters
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label fw-bold">Type</label>
+                <select name="type" class="form-select" onchange="this.form.submit()">
+                    <option value="all" {% if filter_type == 'all' %}selected{% endif %}>All</option>
+                    <option value="teacher" {% if filter_type == 'teacher' %}selected{% endif %}>Teachers</option>
+                    <option value="employee" {% if filter_type == 'employee' %}selected{% endif %}>Employees</option>
+                </select>
+            </div>
+            {% if filter_type == 'teacher' %}
+            <div class="col-md-3">
+                <label class="form-label fw-bold">Department</label>
+                <select name="department" class="form-select" onchange="this.form.submit()">
+                    <option value="all">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}" {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
+                        {{ dept.first_name }} {{ dept.last_name }} — {{ dept.department }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if user_role == 'head_of_school' %}
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-filter me-2"></i> Filter by Department
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Department</label>
+                <select name="department" class="form-select" onchange="this.form.submit()">
+                    <option value="all">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}" {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
+                        {{ dept.first_name }} {{ dept.last_name }} — {{ dept.department }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <a href="?month={{ prev_month }}&year={{ prev_year }}&type={{ filter_type }}&department={{ filter_department }}"
+           class="btn btn-warning btn-sm">
+            <i class="fas fa-chevron-left"></i>
+        </a>
+        <span><i class="fas fa-calendar me-2"></i> {{ month_name }} {{ year }}</span>
+        <a href="?month={{ next_month }}&year={{ next_year }}&type={{ filter_type }}&department={{ filter_department }}"
+           class="btn btn-warning btn-sm">
+            <i class="fas fa-chevron-right"></i>
+        </a>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-bordered mb-0">
+            <thead>
+                <tr>
+                    <th class="text-center">Mon</th>
+                    <th class="text-center">Tue</th>
+                    <th class="text-center">Wed</th>
+                    <th class="text-center">Thu</th>
+                    <th class="text-center">Fri</th>
+                    <th class="text-center" style="background-color: #f8d7da;">Sat</th>
+                    <th class="text-center" style="background-color: #f8d7da;">Sun</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for week in calendar_data %}
+                <tr style="vertical-align: top;">
+                    {% for day_data in week %}
+                    <td class="p-2"
+                        style="height: 100px; {% if day_data.is_weekend %}background-color: #e9ecef;{% endif %} {% if day_data.day == 0 %}background-color: #f8f9fa;{% endif %}">
+                        {% if day_data.day != 0 %}
+                        <div class="fw-bold mb-1"
+                             style="color: {% if day_data.is_weekend %}#adb5bd{% else %}var(--gesm-blue){% endif %};">
+                            {{ day_data.day }}
+                            {% if day_data.is_weekend %}
+                            <small style="font-size: 0.6rem;">WE</small>
+                            {% endif %}
+                        </div>
+                        {% for absent in day_data.absents %}
+                        <div class="mb-1 d-block text-white px-1 rounded"
+                             style="font-size: 0.7rem; background-color: {{ absent.color }};">
+                            {{ absent.name }}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

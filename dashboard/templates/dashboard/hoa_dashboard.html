@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2 class="mb-4">Welcome {{ request.user.first_name }} to the Head of Administration Dashboard</h2>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-users me-2"></i> Employees
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for emp in employees %}
+                <tr>
+                    <td>{{ emp.first_name }} {{ emp.last_name }}</td>
+                    <td>{{ emp.email }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="2" class="text-center text-muted">No employees yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-calendar-alt me-2"></i> Leave Requests
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for leave in leaves %}
+                <tr>
+                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
+                    <td>{{ leave.leave_type }}</td>
+                    <td>{{ leave.start_leave }}</td>
+                    <td>{{ leave.end_leave }}</td>
+                    <td>
+                        {% if leave.status == 'approved' %}
+                            <span class="badge-approved">Approved</span>
+                        {% elif leave.status == 'rejected' %}
+                            <span class="badge-rejected">Rejected</span>
+                        {% else %}
+                            <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
