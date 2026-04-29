@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="d-flex align-items-center mb-4">
+            <a href="{% url 'dashboard' %}" class="btn btn-warning btn-sm me-3">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+            <h2 class="mb-0">
+                <i class="fas fa-user-edit me-2"></i>
+                Edit — {{ target_user.first_name }} {{ target_user.last_name }}
+            </h2>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-edit me-2"></i> Edit User
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">First Name</label>
+                        <input type="text" name="first_name" class="form-control"
+                               value="{{ target_user.first_name }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Last Name</label>
+                        <input type="text" name="last_name" class="form-control"
+                               value="{{ target_user.last_name }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Email</label>
+                        <input type="email" name="email" class="form-control"
+                               value="{{ target_user.email }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Role</label>
+                        <select name="role" class="form-select">
+                            {% for value, label in roles %}
+                            <option value="{{ value }}"
+                                {% if target_user.role == value %}selected{% endif %}>
+                                {{ label }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Superior</label>
+                        <select name="superior" class="form-select">
+                            <option value="">— No superior —</option>
+                            {% for u in all_users %}
+                            <option value="{{ u.id }}"
+                                {% if target_user.superior and target_user.superior.id == u.id %}selected{% endif %}>
+                                {{ u.first_name }} {{ u.last_name }} ({{ u.role }})
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save me-2"></i> Save Changes
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

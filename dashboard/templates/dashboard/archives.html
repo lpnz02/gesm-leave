@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-archive me-2"></i> PDF Archives</h2>
+    <form method="post" action="{% url 'delete_archives' %}" class="d-inline">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger"
+            onclick="return confirm('Delete ALL archived PDFs? This cannot be undone.')">
+            <i class="fas fa-trash me-1"></i> Delete All Archives
+        </button>
+    </form>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-file-pdf me-2"></i> All Submitted PDFs
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Employee</th>
+                    <th>Role</th>
+                    <th>Leave Type</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th>Download</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for leave in leaves_with_pdf %}
+                <tr>
+                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
+                    <td>{{ leave.user.role }}</td>
+                    <td>{{ leave.leave_type }}</td>
+                    <td>{{ leave.start_leave }}</td>
+                    <td>{{ leave.end_leave }}</td>
+                    <td>
+                        {% if leave.status == 'approved' %}
+                            <span class="badge-approved">Approved</span>
+                        {% elif leave.status == 'rejected' %}
+                            <span class="badge-rejected">Rejected</span>
+                        {% else %}
+                            <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ leave.created_at|date:"d/m/Y" }}</td>
+                    <td>
+                        <a href="{% url 'download_pdf' leave.id %}" class="btn btn-primary btn-sm">
+                            <i class="fas fa-download"></i> PDF
+                        </a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="text-center text-muted">No PDFs archived yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

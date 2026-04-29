@@ -122,13 +122,12 @@ STATIC_URL = 'static/'
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-
-LOGIN_REDIRECT_URL = 'dashboard'
-
-LOGIN_URL = 'login'
+DEFAULT_FROM_EMAIL = 'GESM Leave System <noreply@gesm.org>'
 
 import os
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
+
+
+#EMAIL_BACKEND = 'django.core.mail.backends.console' / LOGIN_URL

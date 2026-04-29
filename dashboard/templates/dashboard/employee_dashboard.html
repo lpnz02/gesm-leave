@@ -20,30 +20,28 @@
             {% for item in leave_summary %}
             <div class="col-md-4">
                 <div class="p-3 rounded text-white"
-                     style="background: linear-gradient(135deg,
-                     {% cycle '#1a3a6b' '#e67e22' '#2ecc71' '#9b59b6' '#e74c3c' '#1abc9c' %},
-                     {% cycle '#2a5298' '#d35400' '#27ae60' '#8e44ad' '#c0392b' '#16a085' %});">
+                    style="background: linear-gradient(135deg,
+                    {% cycle '#1a3a6b' '#e67e22' '#2ecc71' '#9b59b6' '#e74c3c' '#1abc9c' %},
+                    {% cycle '#2a5298' '#d35400' '#27ae60' '#8e44ad' '#c0392b' '#16a085' %});">
                     <h6 class="fw-bold mb-2">{{ item.type }}</h6>
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <small>Used</small>
                         <strong>{{ item.used }} days</strong>
                     </div>
-                    {% if item.total %}
+                    {% if item.remaining is not None %}
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>Total</small>
-                        <strong>{{ item.total }} days</strong>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
                         <small>Remaining</small>
                         <strong>{{ item.remaining }} days</strong>
                     </div>
-                    <div class="progress" style="height: 6px;">
-                        <div class="progress-bar bg-white"
-                             style="width: {% if item.remaining > 0 %}{% widthratio item.used item.total 100 %}{% else %}100{% endif %}%">
-                        </div>
+                    {% if item.carried_over > 0 %}
+                    <div class="d-flex justify-content-between align-items-center mb-1"
+                        style="opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 4px; margin-top: 4px;">
+                        <small>↳ Unused from previous year</small>
+                        <strong>+{{ item.carried_over }} days</strong>
                     </div>
+                    {% endif %}
                     {% else %}
-                    <div class="d-flex justify-content-between align-items-center">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
                         <small>No limit</small>
                     </div>
                     {% endif %}

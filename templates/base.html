@@ -204,6 +204,9 @@
                 </a>
                 {% endif %}
                 {% if request.user.role == 'hr' %}
+                <a class="nav-link" href="{% url 'archives' %}">
+                    <i class="fas fa-archive"></i> Archives
+                </a>
                 <a class="nav-link" href="{% url 'create_admin_user' %}">
                     <i class="fas fa-user-plus"></i> Create Admin
                 </a>

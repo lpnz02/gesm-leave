@@ -49,17 +49,13 @@ class Leave(models.Model):
     
     
 class LeaveBalance(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE
-    )
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     leave_type = models.CharField(max_length=30, choices=Leave.LEAVE_CHOICES)
-    total_days = models.IntegerField(default=0)      # jours alloués
-    days_used = models.IntegerField(default=0)       # jours utilisés
-    days_remaining = models.IntegerField(default=0)  # jours restants
-
-    def __str__(self):
-        return f"{self.user} - {self.leave_type} - {self.days_remaining} days left"
+    total_days = models.IntegerField(default=0)
+    days_used = models.IntegerField(default=0)
+    days_remaining = models.IntegerField(default=0)
+    carried_over = models.IntegerField(default=0)  # ← nouveau
+    
     
 
 import uuid
