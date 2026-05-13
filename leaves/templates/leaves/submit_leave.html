@@ -10,7 +10,50 @@
             <div class="card-body p-4">
                 <form method="post" enctype="multipart/form-data">
                     {% csrf_token %}
-                    {{ form.as_p }}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Leave Type</label>
+                        {{ form.leave_type }}
+                        {% if form.leave_type.errors %}
+                            <div class="text-danger small">{{ form.leave_type.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Reason</label>
+                        {{ form.reason_for_leave }}
+                        {% if form.reason_for_leave.errors %}
+                            <div class="text-danger small">{{ form.reason_for_leave.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Start Date</label>
+                        {{ form.start_leave }}
+                        {% if form.start_leave.errors %}
+                            <div class="text-danger small">{{ form.start_leave.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Last Day of Leave</label>
+                        {{ form.end_leave }}
+                        {% if form.end_leave.errors %}
+                            <div class="text-danger small">{{ form.end_leave.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            Attach Document
+                            <small class="text-muted">(optional)</small>
+                        </label>
+                        {{ form.pdf_attachment }}
+                        {% if form.pdf_attachment.errors %}
+                            <div class="text-danger small">{{ form.pdf_attachment.errors }}</div>
+                        {% endif %}
+                    </div>
+
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-paper-plane me-2"></i> Submit Request
@@ -22,5 +65,4 @@
     </div>
 </div>
 {% endblock %}
-
 

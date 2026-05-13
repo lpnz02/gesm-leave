@@ -3,21 +3,23 @@ from django.views import View
 from django.contrib import messages
 from django.core.mail import send_mail
 from django.conf import settings
-from .forms import RegisterForm
-from .models import User
-from django.contrib.auth import authenticate, login, logout
 from .forms import RegisterForm, LoginForm
+from .models import User, Department
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from leaves.models import LeaveBalance
-
 
 
 class Welcome(View):
     def get(self, request):
         return render(request, 'accounts/welcome.html')
 
+
 class RegisterView(View):
     def get(self, request):
+        if request.user.is_authenticated:
+            return redirect('dashboard')
         form = RegisterForm()
         return render(request, 'accounts/register.html', {'form': form})
 
@@ -28,21 +30,25 @@ class RegisterView(View):
             user.is_active = False
             user.is_approved = False
             user.is_email_verified = False
-
-            # si HoD et nouveau département
-            if form.cleaned_data['role'] == 'head_of_department':
-                new_dept_name = form.cleaned_data.get('new_department')
-                if new_dept_name:
-                    from .models import Department
-                    department = Department.objects.create(name=new_dept_name)
-                    user.department = department
-
             user.save()
+
+            # déclencher la logique département après save
+            dept = form.cleaned_data.get('department')
+            if dept and user.role == 'head_of_department':
+                dept.head = user
+                dept.save()
+                for teacher in User.objects.filter(department=dept, role='teacher'):
+                    teacher.superior = user
+                    teacher.save()
+            elif dept and user.role == 'teacher':
+                if dept.head:
+                    user.superior = dept.head
+                    user.save()
 
             verification_link = f"http://127.0.0.1:8000/verify-email/{user.email_verification_token}/"
             send_mail(
-                subject='Verify your email',
-                message=f'Click here to verify your email: {verification_link}',
+                subject='Verify your email — GESM Leave Management',
+                message=f'Hello {user.first_name},\n\nClick here to verify your email:\n{verification_link}\n\nGESM Leave Management',
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
             )
@@ -52,6 +58,9 @@ class RegisterView(View):
 
 class LoginView(View):
     def get(self, request):
+        # si déjà connecté → rediriger vers dashboard
+        if request.user.is_authenticated:
+            return redirect('dashboard')
         form = LoginForm()
         return render(request, 'accounts/login.html', {'form': form})
 
@@ -63,7 +72,7 @@ class LoginView(View):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
-                return redirect('welcome')
+                return redirect('dashboard')  # ← dashboard, pas welcome
             else:
                 messages.error(request, 'Invalid username or password.')
         return render(request, 'accounts/login.html', {'form': form})
@@ -78,7 +87,8 @@ class LogoutView(View):
 class PendingView(View):
     def get(self, request):
         return render(request, 'accounts/pending.html')
-    
+
+
 class VerifyEmailView(View):
     def get(self, request, token):
         try:
@@ -86,38 +96,37 @@ class VerifyEmailView(View):
             if user.is_email_verified:
                 messages.info(request, 'Email already verified.')
                 return redirect('login')
-            
+
             user.is_email_verified = True
             user.save()
 
-            # debug — affiche les HR trouvés
-            hr_users = User.objects.filter(role='hr')
-            print(f"HR users found: {hr_users.count()}")
+            # notifier le HR — sans liens approve/reject, juste une info
+            hr_users = User.objects.filter(role='hr', is_active=True)
             for hr in hr_users:
-                print(f"Sending to HR: {hr.email}")
                 send_mail(
-                    subject='New account pending approval',
-                    message=f'{user.first_name} {user.last_name} ({user.role}) is waiting for approval.\n\nApprove: http://127.0.0.1:8000/approve-user/{user.id}/\nReject: http://127.0.0.1:8000/reject-user/{user.id}/',
+                    subject='New account pending approval — GESM',
+                    message=f'Hello,\n\n{user.first_name} {user.last_name} ({user.get_role_display() if hasattr(user, "get_role_display") else user.role}) has registered and is waiting for your approval.\n\nPlease log in to the GESM Leave Management System to approve or reject:\nhttp://127.0.0.1:8000/dashboard/\n\nGESM Leave Management',
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[hr.email],
                 )
             return render(request, 'accounts/email_verified.html')
-        
+
         except User.DoesNotExist:
             messages.error(request, 'Invalid verification link.')
             return redirect('register')
-            
- 
-class ApproveUserView(View):
+
+
+class ApproveUserView(LoginRequiredMixin, View):
     def get(self, request, user_id):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
         try:
             user = User.objects.get(id=user_id)
             user.is_active = True
             user.is_approved = True
             user.save()
 
-            # créer les balances par défaut
-            if user.role == 'employee':
+            if user.role == 'admin':
                 defaults = {
                     'vacation_leave': 15,
                     'sick_leave': 15,
@@ -126,53 +135,89 @@ class ApproveUserView(View):
                     'maternity_paternity_leave': 0,
                     'others': 0,
                 }
-            elif user.role == 'teacher':
-                defaults = {
-                    'vacation_leave': 30,
-                    'sick_leave': 0,
-                    'bereavement_leave': 0,
-                    'emergency_leave': 0,
-                    'maternity_paternity_leave': 0,
-                    'others': 0,
-                }
-            else:
-                defaults = {}
+                for leave_type, total in defaults.items():
+                    LeaveBalance.objects.get_or_create(
+                        user=user,
+                        leave_type=leave_type,
+                        defaults={
+                            'total_days': total,
+                            'days_used': 0,
+                            'days_remaining': total,
+                            'carried_over': 0,
+                        }
+                    )
 
-            for leave_type, total in defaults.items():
+            elif user.role in ['teacher', 'head_of_department', 'head_of_school']:
+                # une seule balance globale de 30j
                 LeaveBalance.objects.get_or_create(
                     user=user,
-                    leave_type=leave_type,
+                    leave_type='vacation_leave',
                     defaults={
-                        'total_days': total,
+                        'total_days': 30,
                         'days_used': 0,
-                        'days_remaining': total,
+                        'days_remaining': 30,
+                        'carried_over': 0,
                     }
                 )
 
             send_mail(
-                subject='Account Approved',
-                message=f'Hello {user.first_name}, your account has been approved! You can now login at http://127.0.0.1:8000/login/',
+                subject='Account Approved — GESM Leave Management',
+                message=f'Hello {user.first_name},\n\nYour account has been approved! You can now log in at:\nhttp://127.0.0.1:8000/login/\n\nGESM Leave Management',
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
             )
-            return HttpResponse("User approved successfully.")
-        
+            return redirect('dashboard')
+
         except User.DoesNotExist:
             return HttpResponse("User not found.")
 
-class RejectUserView(View):
+class RejectUserView(LoginRequiredMixin, View):
     def get(self, request, user_id):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
         try:
             user = User.objects.get(id=user_id)
+            email = user.email
+            first_name = user.first_name
             user.delete()
 
             send_mail(
-                subject='Account Rejected',
-                message=f'Hello {user.first_name}, unfortunately your account request has been rejected. Please contact HR for more information.',
+                subject='Account Rejected — GESM Leave Management',
+                message=f'Hello {first_name},\n\nUnfortunately your account request has been rejected.\nPlease contact HR for more information.\n\nGESM Leave Management',
                 from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
+                recipient_list=[email],
             )
-            return HttpResponse("User rejected and deleted.")
-        
+            return redirect('dashboard')
+
         except User.DoesNotExist:
             return HttpResponse("User not found.")
+        
+
+from django.contrib.auth import update_session_auth_hash
+
+class ChangePasswordView(LoginRequiredMixin, View):
+    def get(self, request):
+        return render(request, 'accounts/change_password.html')
+
+    def post(self, request):
+        current_password = request.POST.get('current_password')
+        new_password1 = request.POST.get('new_password1')
+        new_password2 = request.POST.get('new_password2')
+
+        if not request.user.check_password(current_password):
+            messages.error(request, 'Current password is incorrect.')
+            return render(request, 'accounts/change_password.html')
+
+        if new_password1 != new_password2:
+            messages.error(request, 'New passwords do not match.')
+            return render(request, 'accounts/change_password.html')
+
+        if len(new_password1) < 8:
+            messages.error(request, 'Password must be at least 8 characters.')
+            return render(request, 'accounts/change_password.html')
+
+        request.user.set_password(new_password1)
+        request.user.save()
+        update_session_auth_hash(request, request.user)
+        messages.success(request, 'Password changed successfully!')
+        return redirect('dashboard')

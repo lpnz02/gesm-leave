@@ -10,7 +10,9 @@
     {% elif user_role == 'head_of_school' %}
         Absence Calendar — All Teachers
     {% elif user_role == 'head_of_admin' %}
-        Absence Calendar — All Employees
+        Absence Calendar — All Admins
+    {% elif user_role == 'scheduling_team' %}
+        Absence Calendar — Teachers
     {% endif %}
 </h2>
 
@@ -26,17 +28,19 @@
                 <select name="type" class="form-select" onchange="this.form.submit()">
                     <option value="all" {% if filter_type == 'all' %}selected{% endif %}>All</option>
                     <option value="teacher" {% if filter_type == 'teacher' %}selected{% endif %}>Teachers</option>
-                    <option value="employee" {% if filter_type == 'employee' %}selected{% endif %}>Employees</option>
+                    <option value="hod" {% if filter_type == 'hod' %}selected{% endif %}>Head of Department</option>
+                    <option value="admin" {% if filter_type == 'admin' %}selected{% endif %}>Admins</option>
                 </select>
             </div>
-            {% if filter_type == 'teacher' %}
+            {% if filter_type == 'teacher' or filter_type == 'hod' %}
             <div class="col-md-3">
                 <label class="form-label fw-bold">Department</label>
                 <select name="department" class="form-select" onchange="this.form.submit()">
                     <option value="all">All Departments</option>
                     {% for dept in departments %}
-                    <option value="{{ dept.id }}" {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
-                        {{ dept.first_name }} {{ dept.last_name }} — {{ dept.department }}
+                    <option value="{{ dept.id }}"
+                        {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
+                        {{ dept.name }}
                     </option>
                     {% endfor %}
                 </select>
@@ -61,8 +65,9 @@
                 <select name="department" class="form-select" onchange="this.form.submit()">
                     <option value="all">All Departments</option>
                     {% for dept in departments %}
-                    <option value="{{ dept.id }}" {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
-                        {{ dept.first_name }} {{ dept.last_name }} — {{ dept.department }}
+                    <option value="{{ dept.id }}"
+                        {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
+                        {{ dept.name }}
                     </option>
                     {% endfor %}
                 </select>
@@ -104,7 +109,9 @@
                 <tr style="vertical-align: top;">
                     {% for day_data in week %}
                     <td class="p-2"
-                        style="height: 100px; {% if day_data.is_weekend %}background-color: #e9ecef;{% endif %} {% if day_data.day == 0 %}background-color: #f8f9fa;{% endif %}">
+                        style="height: 100px;
+                        {% if day_data.is_weekend %}background-color: #e9ecef;{% endif %}
+                        {% if day_data.day == 0 %}background-color: #f8f9fa;{% endif %}">
                         {% if day_data.day != 0 %}
                         <div class="fw-bold mb-1"
                              style="color: {% if day_data.is_weekend %}#adb5bd{% else %}var(--gesm-blue){% endif %};">

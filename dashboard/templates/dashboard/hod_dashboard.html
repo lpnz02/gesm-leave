@@ -3,6 +3,80 @@
 {% block content %}
 <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Head of Department Dashboard</h2>
 
+<!-- Balance du HOD -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-calendar-check me-2"></i> My Leave Balance
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for item in leave_summary %}
+            <div class="col-md-4">
+                <div class="p-3 rounded text-white mb-3"
+                     style="background: linear-gradient(135deg, #1a3a6b, #2a5298);">
+                    <h6 class="fw-bold">{{ item.type }}</h6>
+                    <div class="d-flex justify-content-between">
+                        <small>Used</small>
+                        <strong>{{ item.used }} days</strong>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small>Remaining</small>
+                        <strong>{{ item.remaining }} days</strong>
+                    </div>
+                    {% if item.unpaid %}
+                    <div class="mt-1 text-warning fw-bold">⚠️ Unpaid Leave</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Propres congés du HOD -->
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-paper-plane me-2"></i> My Leave Requests
+    </div>
+    <div class="card-body">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Start</th>
+                    <th>Last Day</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for leave in own_leaves %}
+                <tr>
+                    <td>{{ leave.leave_type }}</td>
+                    <td>{{ leave.start_leave }}</td>
+                    <td>{{ leave.end_leave }}</td>
+                    <td>
+                        {% if leave.status == 'approved' %}
+                            <span class="badge-approved">Approved</span>
+                        {% elif leave.status == 'rejected' %}
+                            <span class="badge-rejected">Rejected</span>
+                        {% elif leave.status == 'pending_hos' %}
+                            <span class="badge-pending">Pending HOS</span>
+                        {% else %}
+                            <span class="badge-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4" class="text-center text-muted">No leave requests yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- My Teachers -->
 <div class="card mb-4">
     <div class="card-header">
         <i class="fas fa-users me-2"></i> My Teachers
@@ -31,9 +105,10 @@
     </div>
 </div>
 
+<!-- Leave Requests des profs -->
 <div class="card">
     <div class="card-header">
-        <i class="fas fa-calendar-alt me-2"></i> Leave Requests
+        <i class="fas fa-calendar-alt me-2"></i> Teachers Leave Requests
     </div>
     <div class="card-body">
         <table class="table table-hover">
@@ -42,7 +117,7 @@
                     <th>Teacher</th>
                     <th>Type</th>
                     <th>Start</th>
-                    <th>End</th>
+                    <th>Last Day</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>

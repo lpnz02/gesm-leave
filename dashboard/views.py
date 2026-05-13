@@ -12,6 +12,8 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from django.core.mail import EmailMessage, send_mail
 from django.conf import settings
+from django.utils import timezone
+from django.contrib import messages
 
 
 class DashboardView(LoginRequiredMixin, View):
@@ -37,14 +39,14 @@ class DashboardView(LoginRequiredMixin, View):
                 'unpaid': (total - days_used) < 0,
             }]
 
-            return render(request, 'dashboard/employee_dashboard.html', {
+            return render(request, 'dashboard/admin_dashboard.html', {
                 'leaves': leaves,
                 'total_days_used': days_used,
                 'leave_summary': leave_summary,
                 'user_role': user.role,
             })
 
-        elif user.role == 'employee':
+        elif user.role == 'admin':
             leaves = Leave.objects.filter(user=user)
             balances = LeaveBalance.objects.filter(user=user)
             leave_summary = []
@@ -76,7 +78,7 @@ class DashboardView(LoginRequiredMixin, View):
                     'unpaid': False if is_maternity else balance.days_remaining < 0,
                 })
 
-            return render(request, 'dashboard/employee_dashboard.html', {
+            return render(request, 'dashboard/admin_dashboard.html', {
                 'leaves': leaves,
                 'total_days_used': total_days_used,
                 'leave_summary': leave_summary,
@@ -84,50 +86,113 @@ class DashboardView(LoginRequiredMixin, View):
             })
 
         elif user.role == 'head_of_department':
-            subordinates = User.objects.filter(superior=user, role='teacher')
-            leaves = Leave.objects.filter(user__in=subordinates)
+            dept = user.department
+            if dept:
+                subordinates = User.objects.filter(department=dept, role='teacher')
+            else:
+                subordinates = User.objects.filter(superior=user, role='teacher')
+
+            teacher_leaves = Leave.objects.filter(user__in=subordinates)
+            own_leaves = Leave.objects.filter(user=user)
+
+            # calcul global comme les profs — ignore les balances par catégorie
+            days_used = 0
+            for leave in own_leaves.filter(status='approved'):
+                current = leave.start_leave
+                while current <= leave.end_leave:
+                    if current.weekday() < 5:
+                        days_used += 1
+                    current += timedelta(days=1)
+
+            leave_summary = [{
+                'type': 'Total Leave (All Types)',
+                'used': days_used,
+                'total': 30,
+                'remaining': 30 - days_used,
+                'unpaid': (30 - days_used) < 0,
+            }]
+
             return render(request, 'dashboard/hod_dashboard.html', {
                 'subordinates': subordinates,
-                'leaves': leaves,
+                'leaves': teacher_leaves,
+                'own_leaves': own_leaves,
+                'leave_summary': leave_summary,
+                'total_days_used': days_used,
+                'user_role': user.role,
             })
 
         elif user.role == 'head_of_school':
             hods = User.objects.filter(role='head_of_department')
-            teachers = User.objects.filter(role='teacher')
-            leaves = Leave.objects.filter(user__in=teachers)
             hod_teams = []
             for hod in hods:
-                hod_teachers = teachers.filter(superior=hod)
+                dept = hod.department
+                if dept:
+                    hod_teachers = User.objects.filter(department=dept, role='teacher')
+                else:
+                    hod_teachers = User.objects.filter(superior=hod, role='teacher')
                 hod_teams.append({
                     'hod': hod,
                     'teachers': hod_teachers,
                 })
+
+            # leaves des profs ET des HOD avec status pending_hos
+            leaves = Leave.objects.filter(
+                user__role__in=['teacher', 'head_of_department'],
+                status='pending_hos'
+            ) | Leave.objects.filter(
+                user__role__in=['teacher', 'head_of_department'],
+                status__in=['approved', 'rejected']
+            )
+
             return render(request, 'dashboard/hos_dashboard.html', {
                 'hod_teams': hod_teams,
                 'leaves': leaves,
             })
 
         elif user.role == 'head_of_admin':
-            employees = User.objects.filter(role='employee')
-            leaves = Leave.objects.filter(user__in=employees)
+            admins = User.objects.filter(role__in=['admin', 'hr'])  # ← ajoute 'hr'
+            leaves = Leave.objects.filter(user__in=admins)
             return render(request, 'dashboard/hoa_dashboard.html', {
-                'employees': employees,
+                'admins': admins,
                 'leaves': leaves,
             })
 
         elif user.role == 'hr':
-            all_leaves = Leave.objects.exclude(user__role='head_of_admin')
+            from accounts.models import Department
+            from django.utils import timezone as tz
+
+            all_leaves = Leave.objects.filter(user__isnull=False).exclude(user__role='head_of_admin')
             all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
             pending_users = User.objects.filter(is_active=False, is_email_verified=True)
+
+            # alertes
+            hods_no_dept = User.objects.filter(role='head_of_department', department=None)
+            teachers_no_superior = User.objects.filter(role='teacher', superior=None)
+            no_hos = not User.objects.filter(role='head_of_school', is_active=True).exists()
+            no_hoa = not User.objects.filter(role='head_of_admin', is_active=True).exists()
+            stale_leaves = Leave.objects.filter(
+                user__isnull=False,
+                status__in=['pending_hod', 'pending_hos', 'pending_hoa'],
+                created_at__lt=tz.now() - timedelta(days=7)
+            )
+
             return render(request, 'dashboard/hr_dashboard.html', {
                 'all_leaves': all_leaves,
                 'all_users': all_users,
                 'pending_users': pending_users,
                 'today': date.today(),
+                'hods_no_dept': hods_no_dept,
+                'teachers_no_superior': teachers_no_superior,
+                'no_hos': no_hos,
+                'no_hoa': no_hoa,
+                'stale_leaves': stale_leaves,
             })
+        
+        elif user.role == 'scheduling_team':
+            return render(request, 'dashboard/scheduling_dashboard.html', {})
 
         else:
-            return render(request, 'dashboard/employee_dashboard.html', {
+            return render(request, 'dashboard/admin_dashboard.html', {
                 'leaves': [],
                 'total_days_used': 0,
             })
@@ -194,7 +259,7 @@ class CalendarView(LoginRequiredMixin, View):
     def get(self, request):
         user = request.user
 
-        allowed_roles = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin']
+        allowed_roles = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin', 'scheduling_team']
         if user.role not in allowed_roles:
             return redirect('dashboard')
 
@@ -217,16 +282,28 @@ class CalendarView(LoginRequiredMixin, View):
             if filter_department != 'all':
                 leaves = leaves.filter(user__superior__id=filter_department)
 
-        elif user.role == 'head_of_admin':
-            leaves = leaves.filter(user__role='employee')
+        elif user.role == 'head_of_admin': 
+            leaves = leaves.filter(user__role__in=['admin', 'hr'])
 
         elif user.role == 'hr':
             if filter_type == 'teacher':
                 leaves = leaves.filter(user__role='teacher')
-            elif filter_type == 'employee':
-                leaves = leaves.filter(user__role='employee')
+            elif filter_type == 'hod':
+                leaves = leaves.filter(user__role='head_of_department')
+            elif filter_type == 'admin':
+                leaves = leaves.filter(user__role__in=['admin', 'hr'])
+            
+            # filtre par département
             if filter_department != 'all':
-                leaves = leaves.filter(user__superior__id=filter_department)
+                if filter_type == 'teacher':
+                    leaves = leaves.filter(user__department__id=filter_department)
+                elif filter_type == 'hod':
+                    leaves = leaves.filter(user__department__id=filter_department)
+                else:
+                    leaves = leaves.filter(user__department__id=filter_department)
+
+        elif user.role == 'scheduling_team':
+            leaves = leaves.filter(user__role='teacher')
 
         colors = [
             '#e74c3c', '#3498db', '#2ecc71', '#9b59b6',
@@ -266,7 +343,8 @@ class CalendarView(LoginRequiredMixin, View):
                     })
             calendar_data.append(week_data)
 
-        departments = User.objects.filter(role='head_of_department')
+        from accounts.models import Department
+        departments = Department.objects.all()  
 
         if month == 1:
             prev_month, prev_year = 12, year - 1
@@ -340,14 +418,6 @@ class DeleteUserView(LoginRequiredMixin, View):
             if not other_hos.exists():
                 return HttpResponse("Please reassign a new Head of School before deleting this one.")
 
-        if target_user.role == 'head_of_department':
-            other_hod = User.objects.filter(
-                role='head_of_department',
-                department=target_user.department
-            ).exclude(id=user_id)
-            if not other_hod.exists():
-                return HttpResponse("Please reassign a new Head of Department before deleting this one.")
-
         target_user.delete()
         return redirect('dashboard')
 
@@ -358,13 +428,6 @@ class DeleteLeaveView(LoginRequiredMixin, View):
             return redirect('dashboard')
 
         leave = Leave.objects.get(id=leave_id)
-
-        if leave.start_leave < date.today():
-            return HttpResponse("Cannot delete a leave request that has already started or passed.")
-
-        if leave.status not in ['pending_hod', 'pending_hos', 'pending_hoa', 'approved']:
-            return HttpResponse("Cannot delete this leave request.")
-
         leave.delete()
         return redirect('dashboard')
 
@@ -458,20 +521,20 @@ class ExportLeavesView(LoginRequiredMixin, View):
         rejected_fill = PatternFill('solid', start_color='f8d7da', end_color='f8d7da')
         pending_fill = PatternFill('solid', start_color='fff3cd', end_color='fff3cd')
 
-        ws.merge_cells('A1:G1')
+        ws.merge_cells('A1:H1')
         ws['A1'] = 'GESM Leave Management — Leave Requests Report'
         ws['A1'].font = title_font
         ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[1].height = 30
 
-        ws.merge_cells('A2:G2')
+        ws.merge_cells('A2:H2')
         ws['A2'] = f'Generated on: {date.today().strftime("%d/%m/%Y")}'
         ws['A2'].font = date_font
         ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[2].height = 20
         ws.row_dimensions[3].height = 10
 
-        headers = ['Person', 'Role', 'Start Date', 'End Date', 'Leave Type', 'Reason', 'Status']
+        headers = ['Person', 'Role', 'Start Date', 'Last Day', 'Leave Type', 'Reason', 'Status', 'Submitted On']
         for col, header in enumerate(headers, 1):
             c = ws.cell(row=4, column=col, value=header)
             c.font = header_font
@@ -480,12 +543,14 @@ class ExportLeavesView(LoginRequiredMixin, View):
             c.border = thin_border
         ws.row_dimensions[4].height = 30
 
-        leaves = Leave.objects.exclude(user__role='head_of_admin').order_by('-created_at')
+        leaves = Leave.objects.filter(user__isnull=False).exclude(
+            user__role='head_of_admin'
+        ).order_by('-created_at')
 
         for row_idx, leave in enumerate(leaves, 5):
             is_alt = (row_idx % 2 == 0)
             name = f"{leave.user.first_name} {leave.user.last_name}" if leave.user else "Deleted User"
-            role = leave.user.role if leave.user else "—"
+            role = leave.user.role if leave.user else "unknown"
 
             data = [
                 name,
@@ -495,6 +560,7 @@ class ExportLeavesView(LoginRequiredMixin, View):
                 leave.leave_type.replace('_', ' ').title(),
                 leave.reason_for_leave,
                 leave.status.replace('_', ' ').title(),
+                timezone.localtime(leave.created_at).strftime('%d/%m/%Y %H:%M'),
             ]
 
             for col, value in enumerate(data, 1):
@@ -518,7 +584,7 @@ class ExportLeavesView(LoginRequiredMixin, View):
 
             ws.row_dimensions[row_idx].height = 20
 
-        col_widths = [25, 20, 15, 15, 25, 40, 20]
+        col_widths = [25, 20, 15, 15, 25, 40, 20, 20]
         for col, width in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(col)].width = width
 
@@ -532,18 +598,20 @@ class ExportLeavesView(LoginRequiredMixin, View):
         return response
 
 
+from accounts.models import User, Department
+
 class EditUserView(LoginRequiredMixin, View):
     def get(self, request, user_id):
         if request.user.role != 'hr':
             return redirect('dashboard')
         target_user = User.objects.get(id=user_id)
-        all_users = User.objects.exclude(id=user_id)
+        departments = Department.objects.all()
         return render(request, 'dashboard/edit_user.html', {
             'target_user': target_user,
-            'all_users': all_users,
+            'departments': departments,
             'roles': [
                 ('teacher', 'Teacher'),
-                ('employee', 'Employee'),
+                ('admin', 'Admin'),
                 ('head_of_department', 'Head of Department'),
                 ('head_of_school', 'Head of School'),
                 ('head_of_admin', 'Head of Administration'),
@@ -555,25 +623,105 @@ class EditUserView(LoginRequiredMixin, View):
         if request.user.role != 'hr':
             return redirect('dashboard')
         target_user = User.objects.get(id=user_id)
+        old_role = target_user.role
+        old_dept = target_user.department
+
         target_user.first_name = request.POST.get('first_name')
         target_user.last_name = request.POST.get('last_name')
         target_user.email = request.POST.get('email')
-        target_user.role = request.POST.get('role')
-        superior_id = request.POST.get('superior')
-        if superior_id:
-            target_user.superior = User.objects.get(id=superior_id)
-        else:
-            target_user.superior = None
-        target_user.save()
-        return redirect('dashboard')
+        new_role = request.POST.get('role')
+        target_user.role = new_role
 
+        # gérer le département
+        dept_id = request.POST.get('department')
+        if dept_id:
+            new_dept = Department.objects.get(id=dept_id)
+
+            # retirer le HOD de l'ancien département si changement
+            if old_dept and old_dept != new_dept:
+                if old_dept.head == target_user:
+                    old_dept.head = None
+                    old_dept.save()
+                # les profs de l'ancien dept perdent ce HOD comme supérieur
+                if old_role == 'head_of_department':
+                    for teacher in User.objects.filter(department=old_dept, role='teacher'):
+                        teacher.superior = None
+                        teacher.save()
+
+            target_user.department = new_dept
+
+            # si HOD → mettre à jour le head du nouveau département
+            if new_role == 'head_of_department':
+                new_dept.head = target_user
+                new_dept.save()
+                # mettre à jour le superior des profs du nouveau département
+                for teacher in User.objects.filter(department=new_dept, role='teacher'):
+                    teacher.superior = target_user
+                    teacher.save()
+
+        else:
+            # pas de département → retirer l'ancien
+            if old_dept:
+                if old_dept.head == target_user:
+                    old_dept.head = None
+                    old_dept.save()
+                if old_role == 'head_of_department':
+                    for teacher in User.objects.filter(department=old_dept, role='teacher'):
+                        teacher.superior = None
+                        teacher.save()
+            target_user.department = None
+
+        # assigner le superior selon le rôle
+        if new_role == 'head_of_department':
+            hos = User.objects.filter(role='head_of_school').first()
+            target_user.superior = hos
+        elif new_role == 'teacher':
+            dept = target_user.department
+            if dept and dept.head:
+                target_user.superior = dept.head
+            else:
+                target_user.superior = None
+        elif new_role in ['head_of_school', 'head_of_admin', 'hr', 'admin']:
+            target_user.superior = None
+
+        target_user.save()
+
+        # mettre à jour les balances si rôle change
+        if old_role != new_role:
+            if new_role in ['teacher', 'head_of_department', 'head_of_school']:
+                LeaveBalance.objects.filter(user=target_user).delete()
+                LeaveBalance.objects.create(
+                    user=target_user,
+                    leave_type='vacation_leave',
+                    total_days=30, days_used=0,
+                    days_remaining=30, carried_over=0,
+                )
+            elif new_role == 'admin':
+                LeaveBalance.objects.filter(user=target_user).delete()
+                defaults = {
+                    'vacation_leave': 15,
+                    'sick_leave': 15,
+                    'bereavement_leave': 5,
+                    'emergency_leave': 3,
+                    'maternity_paternity_leave': 0,
+                    'others': 0,
+                }
+                for leave_type, total in defaults.items():
+                    LeaveBalance.objects.create(
+                        user=target_user,
+                        leave_type=leave_type,
+                        total_days=total, days_used=0,
+                        days_remaining=total, carried_over=0,
+                    )
+
+        return redirect('dashboard')
 
 class ResetBalancesView(LoginRequiredMixin, View):
     def post(self, request):
         if request.user.role != 'hr':
             return redirect('dashboard')
 
-        employee_defaults = {
+        admin_defaults = {
             'vacation_leave': 15,
             'sick_leave': 15,
             'bereavement_leave': 5,
@@ -582,8 +730,9 @@ class ResetBalancesView(LoginRequiredMixin, View):
             'others': 0,
         }
 
-        for user in User.objects.filter(role='employee'):
-            for leave_type, default_total in employee_defaults.items():
+        # reset admins/admins — carry over SEULEMENT vacation_leave
+        for user in User.objects.filter(role__in=['admin']):
+            for leave_type, default_total in admin_defaults.items():
                 balance, created = LeaveBalance.objects.get_or_create(
                     user=user,
                     leave_type=leave_type,
@@ -594,23 +743,25 @@ class ResetBalancesView(LoginRequiredMixin, View):
                         'carried_over': 0,
                     }
                 )
-                if not created and default_total > 0:
-                    # reporter les days_remaining actuels (modifiables par HR)
-                    unused = max(0, balance.days_remaining)
-                    new_total = default_total + unused
-                    balance.total_days = new_total
-                    balance.days_used = 0
-                    balance.days_remaining = new_total
-                    balance.carried_over = unused
-                    balance.save()
-                elif not created and default_total == 0:
-                    # maternity/others — pas de reset
-                    balance.days_used = 0
-                    balance.carried_over = 0
+                if not created:
+                    if leave_type == 'vacation_leave':
+                        # carry over uniquement les vacation days non utilisés
+                        unused = max(0, balance.days_remaining)
+                        new_total = default_total + unused
+                        balance.total_days = new_total
+                        balance.days_used = 0
+                        balance.days_remaining = new_total
+                        balance.carried_over = unused
+                    else:
+                        # toutes les autres catégories → remises au défaut
+                        balance.total_days = default_total
+                        balance.days_used = 0
+                        balance.days_remaining = default_total
+                        balance.carried_over = 0
                     balance.save()
 
-        # reset profs — 30j fixe, pas de report
-        for user in User.objects.filter(role='teacher'):
+        # reset profs ET HOD — 30j fixe, pas de report
+        for user in User.objects.filter(role__in=['teacher', 'head_of_department', 'head_of_school']):
             balance = LeaveBalance.objects.filter(
                 user=user, leave_type='vacation_leave'
             ).first()
@@ -623,6 +774,7 @@ class ResetBalancesView(LoginRequiredMixin, View):
 
         Leave.objects.all().delete()
         return redirect('dashboard')
+        
 
 
 class ApproveLeaveDashboardView(LoginRequiredMixin, View):
@@ -630,42 +782,83 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         leave = Leave.objects.get(id=leave_id)
         user = leave.user
 
+        # HOD approuve → pending_hos + email HOS avec PDF
         if request.user.role == 'head_of_department' and leave.status == 'pending_hod':
             leave.status = 'pending_hos'
             leave.save()
-            hos_users = User.objects.filter(role='head_of_school')
-            for hos in hos_users:
+            for hos in User.objects.filter(role='head_of_school'):
                 self._send_email(
                     to=hos.email,
                     subject=f'Leave Request Pending Your Approval — {user.first_name} {user.last_name}',
-                    body=f'''{user.first_name} {user.last_name} has requested {leave.leave_type} leave from {leave.start_leave} to {leave.end_leave}.
-
-Approved by Head of Department. Please log in to approve or reject:
-http://127.0.0.1:8000/dashboard/
-
-Reason: {leave.reason_for_leave}''',
+                    body=(
+                        f'Hello,\n\n'
+                        f'{user.first_name} {user.last_name} has requested {leave.leave_type.replace("_", " ").title()} leave '
+                        f'from {leave.start_leave} to {leave.end_leave}.\n\n'
+                        f'Reason: {leave.reason_for_leave}\n\n'
+                        f'This request has been approved by the Head of Department '
+                        f'and is now pending your approval. Please log in to your dashboard to approve or reject.\n\n'
+                        f'GESM Leave Management'
+                    ),
                     leave=leave,
                 )
 
+        # HOS approuve → approved + email prof + HOD + HOS + HR + scheduling
         elif request.user.role == 'head_of_school' and leave.status == 'pending_hos':
             leave.status = 'approved'
             leave.save()
             self._update_balance(leave)
-            self._send_email(
-                to=user.email,
-                subject='Your Leave Request Has Been Approved',
-                body=f'Hello {user.first_name}, your {leave.leave_type} leave request from {leave.start_leave} to {leave.end_leave} has been fully approved!',
-            )
 
+            recipients = set()
+            recipients.add(user.email)
+            if user.superior:
+                recipients.add(user.superior.email)
+            for hos in User.objects.filter(role='head_of_school'):
+                recipients.add(hos.email)
+            for hr in User.objects.filter(role='hr'):
+                recipients.add(hr.email)
+            for sched in User.objects.filter(role='scheduling_team'):
+                recipients.add(sched.email)
+
+            for email_addr in recipients:
+                self._send_email(
+                    to=email_addr,
+                    subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+                    body=(
+                        f'Hello,\n\n'
+                        f'{user.first_name} {user.last_name} leave request for '
+                        f'{leave.leave_type.replace("_", " ").title()} '
+                        f'from {leave.start_leave} to {leave.end_leave} '
+                        f'has been fully approved.\n\n'
+                        f'GESM Leave Management'
+                    ),
+                )
+
+        # HOA approuve → approved + email admin + HOA + HR
         elif request.user.role == 'head_of_admin' and leave.status == 'pending_hoa':
             leave.status = 'approved'
             leave.save()
             self._update_balance(leave)
-            self._send_email(
-                to=user.email,
-                subject='Your Leave Request Has Been Approved',
-                body=f'Hello {user.first_name}, your {leave.leave_type} leave request from {leave.start_leave} to {leave.end_leave} has been approved!',
-            )
+
+            recipients = set()
+            recipients.add(user.email)
+            for hoa in User.objects.filter(role='head_of_admin'):
+                recipients.add(hoa.email)
+            for hr in User.objects.filter(role='hr'):
+                recipients.add(hr.email)
+
+            for email_addr in recipients:
+                self._send_email(
+                    to=email_addr,
+                    subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+                    body=(
+                        f'Hello,\n\n'
+                        f'{user.first_name} {user.last_name} leave request for '
+                        f'{leave.leave_type.replace("_", " ").title()} '
+                        f'from {leave.start_leave} to {leave.end_leave} '
+                        f'has been approved by the Head of Administration.\n\n'
+                        f'GESM Leave Management'
+                    ),
+                )
 
         elif request.user.role == 'hr':
             leave.status = 'approved'
@@ -673,8 +866,14 @@ Reason: {leave.reason_for_leave}''',
             self._update_balance(leave)
             self._send_email(
                 to=user.email,
-                subject='Your Leave Request Has Been Approved',
-                body=f'Hello {user.first_name}, your {leave.leave_type} leave request from {leave.start_leave} to {leave.end_leave} has been approved by HR!',
+                subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+                body=(
+                    f'Hello {user.first_name},\n\n'
+                    f'Your {leave.leave_type.replace("_", " ").title()} leave request '
+                    f'from {leave.start_leave} to {leave.end_leave} '
+                    f'has been approved by HR.\n\n'
+                    f'GESM Leave Management'
+                ),
             )
 
         return redirect('dashboard')
@@ -724,15 +923,39 @@ class RejectLeaveDashboardView(LoginRequiredMixin, View):
         leave.status = 'rejected'
         leave.save()
 
-        send_mail(
-            subject='Your Leave Request Has Been Rejected',
-            message=f'Hello {user.first_name}, your {leave.leave_type} leave request from {leave.start_leave} to {leave.end_leave} has been rejected.',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-        )
+        recipients = set()
+        recipients.add(user.email)
+
+        if user.role == 'teacher':
+            if user.superior:
+                recipients.add(user.superior.email)
+            for hos in User.objects.filter(role='head_of_school'):
+                recipients.add(hos.email)
+            for hr in User.objects.filter(role='hr'):
+                recipients.add(hr.email)
+
+        elif user.role in ['admin', 'hr']:
+            for hoa in User.objects.filter(role='head_of_admin'):
+                recipients.add(hoa.email)
+            for hr in User.objects.filter(role='hr'):
+                recipients.add(hr.email)
+
+        for email_addr in recipients:
+            send_mail(
+                subject=f'Leave Request Rejected — {user.first_name} {user.last_name}',
+                message=(
+                    f'Hello,\n\n'
+                    f'{user.first_name} {user.last_name} leave request for '
+                    f'{leave.leave_type.replace("_", " ").title()} '
+                    f'from {leave.start_leave} to {leave.end_leave} '
+                    f'has been rejected.\n\n'
+                    f'GESM Leave Management'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email_addr],
+            )
 
         return redirect('dashboard')
-    
 import os
 from django.http import FileResponse
 
@@ -792,3 +1015,118 @@ class DeleteArchivesView(LoginRequiredMixin, View):
                 leave.save()
         
         return redirect('archives')
+    
+
+from accounts.models import User, Department
+
+class DepartmentListView(LoginRequiredMixin, View):
+    def get(self, request):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
+        
+        departments = Department.objects.all()
+        hods = User.objects.filter(role='head_of_department')
+
+        dept_data = []
+        for dept in departments:
+            teacher_count = User.objects.filter(
+                department=dept, role='teacher'
+            ).count()
+            
+            # si pas de head assigné, cherche un HOD dans le département
+            if not dept.head:
+                auto_hod = User.objects.filter(
+                    department=dept, role='head_of_department'
+                ).first()
+                if auto_hod:
+                    dept.head = auto_hod
+                    dept.save()
+
+            dept_data.append({
+                'dept': dept,
+                'teacher_count': teacher_count,
+            })
+
+        return render(request, 'dashboard/department_list.html', {
+            'dept_data': dept_data,
+            'hods': hods,
+        })
+
+    def post(self, request):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
+        dept_id = request.POST.get('dept_id')
+        hod_id = request.POST.get('hod_id')
+        dept = Department.objects.get(id=dept_id)
+        if hod_id:
+            hod = User.objects.get(id=hod_id)
+            dept.head = hod
+            dept.save()
+            for teacher in User.objects.filter(department=dept, role='teacher'):
+                teacher.superior = hod
+                teacher.save()
+        return redirect('department_list')
+
+
+class DepartmentCreateView(LoginRequiredMixin, View):
+    def post(self, request):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
+        name = request.POST.get('name')
+        if name:
+            Department.objects.create(name=name)
+        return redirect('department_list')
+
+
+class DepartmentDeleteView(LoginRequiredMixin, View):
+    def post(self, request, dept_id):
+        if request.user.role != 'hr':
+            return redirect('dashboard')
+        dept = Department.objects.get(id=dept_id)
+        
+        # vérifier si des HOD sont dans ce département
+        hods_in_dept = User.objects.filter(department=dept, role='head_of_department')
+        teachers_in_dept = User.objects.filter(department=dept, role='teacher')
+        
+        if hods_in_dept.exists() or teachers_in_dept.exists():
+            from django.contrib import messages
+            names = ', '.join([f"{u.first_name} {u.last_name}" for u in hods_in_dept])
+            messages.warning(request,
+                f"Warning: Department '{dept.name}' has been deleted but "
+                f"{hods_in_dept.count()} HOD(s) ({names}) and "
+                f"{teachers_in_dept.count()} teacher(s) still have it assigned. "
+                f"Please reassign them via Edit User."
+            )
+        
+        dept.delete()
+        return redirect('department_list')
+    
+
+from django.contrib.auth import update_session_auth_hash
+
+class ChangePasswordView(LoginRequiredMixin, View):
+    def get(self, request):
+        return render(request, 'accounts/change_password.html')
+
+    def post(self, request):
+        current_password = request.POST.get('current_password')
+        new_password1 = request.POST.get('new_password1')
+        new_password2 = request.POST.get('new_password2')
+
+        if not request.user.check_password(current_password):
+            messages.error(request, 'Current password is incorrect.')
+            return render(request, 'accounts/change_password.html')
+
+        if new_password1 != new_password2:
+            messages.error(request, 'New passwords do not match.')
+            return render(request, 'accounts/change_password.html')
+
+        if len(new_password1) < 8:
+            messages.error(request, 'Password must be at least 8 characters.')
+            return render(request, 'accounts/change_password.html')
+
+        request.user.set_password(new_password1)
+        request.user.save()
+        update_session_auth_hash(request, request.user)  # reste connecté
+        messages.success(request, 'Password changed successfully!')
+        return redirect('dashboard')

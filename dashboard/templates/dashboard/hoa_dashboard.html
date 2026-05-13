@@ -5,7 +5,7 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        <i class="fas fa-users me-2"></i> Employees
+        <i class="fas fa-users me-2"></i> Admins
     </div>
     <div class="card-body">
         <table class="table table-hover">
@@ -16,14 +16,14 @@
                 </tr>
             </thead>
             <tbody>
-                {% for emp in employees %}
+                {% for emp in admins %}
                 <tr>
                     <td>{{ emp.first_name }} {{ emp.last_name }}</td>
                     <td>{{ emp.email }}</td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="2" class="text-center text-muted">No employees yet.</td>
+                    <td colspan="2" class="text-center text-muted">No admins yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -39,10 +39,11 @@
         <table class="table table-hover">
             <thead>
                 <tr>
-                    <th>Employee</th>
+                    <th>Admin</th>
                     <th>Type</th>
                     <th>Start</th>
-                    <th>End</th>
+                    <th>Last Day</th>
+                    <th>Submitted</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -54,6 +55,9 @@
                     <td>{{ leave.leave_type }}</td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
+                    <td>
+                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                    </td>
                     <td>
                         {% if leave.status == 'approved' %}
                             <span class="badge-approved">Approved</span>
@@ -83,7 +87,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="6" class="text-center text-muted">No leave requests yet.</td>
+                    <td colspan="7" class="text-center text-muted">No leave requests yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

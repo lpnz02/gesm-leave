@@ -20,24 +20,28 @@
             <div class="card-body p-4">
                 <form method="post">
                     {% csrf_token %}
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">First Name</label>
                         <input type="text" name="first_name" class="form-control"
                                value="{{ target_user.first_name }}">
                     </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Last Name</label>
                         <input type="text" name="last_name" class="form-control"
                                value="{{ target_user.last_name }}">
                     </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Email</label>
                         <input type="email" name="email" class="form-control"
                                value="{{ target_user.email }}">
                     </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Role</label>
-                        <select name="role" class="form-select">
+                        <select name="role" class="form-select" id="role-select">
                             {% for value, label in roles %}
                             <option value="{{ value }}"
                                 {% if target_user.role == value %}selected{% endif %}>
@@ -46,18 +50,21 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Superior</label>
-                        <select name="superior" class="form-select">
-                            <option value="">— No superior —</option>
-                            {% for u in all_users %}
-                            <option value="{{ u.id }}"
-                                {% if target_user.superior and target_user.superior.id == u.id %}selected{% endif %}>
-                                {{ u.first_name }} {{ u.last_name }} ({{ u.role }})
+
+                    <!-- Département — visible pour teacher et HOD -->
+                    <div class="mb-3" id="department-field">
+                        <label class="form-label fw-bold">Department</label>
+                        <select name="department" class="form-select">
+                            <option value="">— No department —</option>
+                            {% for dept in departments %}
+                            <option value="{{ dept.id }}"
+                                {% if target_user.department and target_user.department.id == dept.id %}selected{% endif %}>
+                                {{ dept.name }}
                             </option>
                             {% endfor %}
                         </select>
                     </div>
+
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save me-2"></i> Save Changes
@@ -68,4 +75,21 @@
         </div>
     </div>
 </div>
+
+<script>
+    const roleSelect = document.getElementById('role-select');
+    const deptField = document.getElementById('department-field');
+
+    function toggleDept() {
+        const rolesWithDept = ['teacher', 'head_of_department'];
+        if (rolesWithDept.includes(roleSelect.value)) {
+            deptField.style.display = 'block';
+        } else {
+            deptField.style.display = 'none';
+        }
+    }
+
+    toggleDept();
+    roleSelect.addEventListener('change', toggleDept);
+</script>
 {% endblock %}

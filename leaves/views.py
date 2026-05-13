@@ -29,7 +29,7 @@ class SubmitLeaveView(LoginRequiredMixin, View):
                 if superior:
                     self.send_notification_email(leave, superior, pdf_file)
 
-            elif request.user.role == 'employee':
+            elif request.user.role == 'admin':
                 leave.status = 'pending_hoa'
                 if pdf_file:
                     leave.pdf_attachment = pdf_file
@@ -38,7 +38,26 @@ class SubmitLeaveView(LoginRequiredMixin, View):
                 for hoa in hoa_users:
                     self.send_notification_email(leave, hoa, pdf_file)
 
+            elif request.user.role == 'hr':
+                leave.status = 'pending_hoa'
+                if pdf_file:
+                    leave.pdf_attachment = pdf_file
+                leave.save()
+                hoa_users = User.objects.filter(role='head_of_admin')
+                for hoa in hoa_users:
+                    self.send_notification_email(leave, hoa, pdf_file)
+
+            elif request.user.role == 'head_of_department':
+                leave.status = 'pending_hos'
+                if pdf_file:
+                    leave.pdf_attachment = pdf_file
+                leave.save()
+                hos_users = User.objects.filter(role='head_of_school')
+                for hos in hos_users:
+                    self.send_notification_email(leave, hos, pdf_file)
+
             return redirect('leave_submitted')
+
         return render(request, 'leaves/submit_leave.html', {'form': form})
 
     def send_notification_email(self, leave, recipient, pdf_file=None):

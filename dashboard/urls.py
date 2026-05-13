@@ -19,4 +19,7 @@ urlpatterns = [
     path('archives/', views.ArchivesView.as_view(), name='archives'),
     path('download-pdf/<int:leave_id>/', views.DownloadPDFView.as_view(), name='download_pdf'),
     path('delete-archives/', views.DeleteArchivesView.as_view(), name='delete_archives'),
+    path('departments/', views.DepartmentListView.as_view(), name='department_list'),
+    path('departments/create/', views.DepartmentCreateView.as_view(), name='department_create'),
+    path('departments/delete/<int:dept_id>/', views.DepartmentDeleteView.as_view(), name='department_delete'),
 ]

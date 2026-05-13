@@ -107,11 +107,10 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Manila' 
+USE_TZ = True
 
 USE_I18N = True
-
-USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
@@ -131,3 +130,6 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 
 
 #EMAIL_BACKEND = 'django.core.mail.backends.console' / LOGIN_URL
+
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_COOKIE_AGE = 28800  # 8 heures max même si le navigateur reste ouvert

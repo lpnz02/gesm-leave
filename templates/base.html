@@ -172,13 +172,19 @@
             <span>GESM Leave Management</span>
         </a>
         <div class="ms-auto d-flex align-items-center">
+            {% if request.user.is_authenticated %}
             <span class="text-white me-3">
                 <i class="fas fa-user-circle me-1"></i>
                 {{ request.user.first_name }} {{ request.user.last_name }}
             </span>
+            <a href="{% url 'change_password' %}" class="btn btn-outline-light btn-sm me-2"
+               title="Change Password">
+                <i class="fas fa-key"></i>
+            </a>
             <a href="{% url 'logout' %}" class="btn btn-warning btn-sm">
                 <i class="fas fa-sign-out-alt me-1"></i> Logout
             </a>
+            {% endif %}
         </div>
     </div>
 </nav>
@@ -190,26 +196,36 @@
         <!-- Sidebar -->
         <div class="col-md-2 sidebar">
             <nav class="nav flex-column mt-2">
+                {% if request.user.is_authenticated %}
+
                 <a class="nav-link" href="{% url 'dashboard' %}">
                     <i class="fas fa-tachometer-alt"></i> Dashboard
                 </a>
-                {% if request.user.role == 'teacher' or request.user.role == 'employee' %}
+
+                {% if request.user.role == 'teacher' or request.user.role == 'admin' or request.user.role == 'hr' or request.user.role == 'head_of_department' %}
                 <a class="nav-link" href="{% url 'submit_leave' %}">
                     <i class="fas fa-paper-plane"></i> Submit Leave
                 </a>
                 {% endif %}
-                {% if request.user.role == 'hr' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' or request.user.role == 'head_of_admin' %}
+
+                {% if request.user.role == 'hr' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' or request.user.role == 'head_of_admin' or request.user.role == 'scheduling_team' %}
                 <a class="nav-link" href="{% url 'calendar' %}">
                     <i class="fas fa-calendar-alt"></i> Calendar
                 </a>
                 {% endif %}
+
                 {% if request.user.role == 'hr' %}
+                <a class="nav-link" href="{% url 'department_list' %}">
+                    <i class="fas fa-building"></i> Departments
+                </a>
                 <a class="nav-link" href="{% url 'archives' %}">
                     <i class="fas fa-archive"></i> Archives
                 </a>
                 <a class="nav-link" href="{% url 'create_admin_user' %}">
                     <i class="fas fa-user-plus"></i> Create Admin
                 </a>
+                {% endif %}
+
                 {% endif %}
             </nav>
         </div>

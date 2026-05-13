@@ -10,13 +10,81 @@
             <div class="card-body p-4">
                 <form method="post">
                     {% csrf_token %}
-                    {{ form.as_p }}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Username</label>
+                        {{ form.username }}
+                        {% if form.username.errors %}
+                            <div class="text-danger small">{{ form.username.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">First Name</label>
+                        {{ form.first_name }}
+                        {% if form.first_name.errors %}
+                            <div class="text-danger small">{{ form.first_name.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Last Name</label>
+                        {{ form.last_name }}
+                        {% if form.last_name.errors %}
+                            <div class="text-danger small">{{ form.last_name.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Email</label>
+                        {{ form.email }}
+                        {% if form.email.errors %}
+                            <div class="text-danger small">{{ form.email.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Role</label>
+                        {{ form.role }}
+                        {% if form.role.errors %}
+                            <div class="text-danger small">{{ form.role.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3" id="department-field">
+                        <label class="form-label fw-bold">
+                            Department
+                            <small class="text-muted">(teachers and HOD only)</small>
+                        </label>
+                        {{ form.department }}
+                        {% if form.department.errors %}
+                            <div class="text-danger small">{{ form.department.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Password</label>
+                        {{ form.password1 }}
+                        {% if form.password1.errors %}
+                            <div class="text-danger small">{{ form.password1.errors }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Confirm Password</label>
+                        {{ form.password2 }}
+                        {% if form.password2.errors %}
+                            <div class="text-danger small">{{ form.password2.errors }}</div>
+                        {% endif %}
+                    </div>
+
                     <div class="d-grid mt-4">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-user-plus me-2"></i> Register
                         </button>
                     </div>
                 </form>
+
                 <hr>
                 <div class="text-center">
                     <a href="{% url 'login' %}" class="text-decoration-none">
@@ -27,4 +95,21 @@
         </div>
     </div>
 </div>
+
+<script>
+    const roleField = document.querySelector('[name="role"]');
+    const deptField = document.getElementById('department-field');
+
+    function toggleDept() {
+        const rolesWithDept = ['teacher', 'head_of_department'];
+        if (rolesWithDept.includes(roleField.value)) {
+            deptField.style.display = 'block';
+        } else {
+            deptField.style.display = 'none';
+        }
+    }
+
+    toggleDept();
+    roleField.addEventListener('change', toggleDept);
+</script>
 {% endblock %}
