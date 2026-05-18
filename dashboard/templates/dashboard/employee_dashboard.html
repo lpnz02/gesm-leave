@@ -3,12 +3,12 @@
 {% block content %}
 {% if request.user.role == 'teacher' %}
     <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Teacher Dashboard
-    {% if request.user.superior %}
-        — {{ request.user.superior.get_full_name }} Department
+    {% if request.user.department %}
+        — {{ request.user.department.name }}
     {% endif %}
     </h2>
 {% else %}
-    <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Employee Dashboard</h2>
+    <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Admin Dashboard</h2>
 {% endif %}
 
 <div class="card mb-4">
@@ -42,7 +42,7 @@
                     {% endif %}
                     {% else %}
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>No limit</small>
+                        <small>No limit set — contact HR</small>
                     </div>
                     {% endif %}
                     {% if item.unpaid %}
@@ -71,15 +71,24 @@
                     <th>Type</th>
                     <th>Start</th>
                     <th>Last Day</th>
+                    <th>Submitted</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 {% for leave in leaves %}
                 <tr>
-                    <td>{{ leave.leave_type }}</td>
+                    <td>
+                        {{ leave.leave_type }}
+                        {% if leave.half_day != 'none' %}
+                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                        {% endif %}
+                    </td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
+                    <td>
+                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                    </td>
                     <td>
                         {% if leave.status == 'approved' %}
                             <span class="badge-approved">Approved</span>
@@ -88,11 +97,17 @@
                         {% else %}
                             <span class="badge-pending">Pending</span>
                         {% endif %}
+                        {% if leave.is_unpaid %}
+                            <br><span class="badge"
+                                style="background-color:#dc3545; color:white; font-size:0.7rem;">
+                                Unpaid
+                            </span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="4" class="text-center text-muted">No leave requests yet.</td>
+                    <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

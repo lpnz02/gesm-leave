@@ -8,15 +8,18 @@
     {% elif user_role == 'head_of_department' %}
         Absence Calendar — My Teachers
     {% elif user_role == 'head_of_school' %}
-        Absence Calendar — All Teachers
+        Absence Calendar — All Teachers & HODs
     {% elif user_role == 'head_of_admin' %}
         Absence Calendar — All Admins
     {% elif user_role == 'scheduling_team' %}
-        Absence Calendar — Teachers
+        Absence Calendar — Teachers & HODs
+    {% elif user_role == 'calendar_access' %}
+        Absence Calendar — All Staff
     {% endif %}
 </h2>
 
-{% if user_role == 'hr' %}
+<!-- Filtre HR et Calendar Access : type + département -->
+{% if user_role == 'hr' or user_role == 'calendar_access' %}
 <div class="card mb-4">
     <div class="card-header">
         <i class="fas fa-filter me-2"></i> Filters
@@ -53,6 +56,7 @@
 </div>
 {% endif %}
 
+<!-- Filtre HOS : département seulement -->
 {% if user_role == 'head_of_school' %}
 <div class="card mb-4">
     <div class="card-header">
@@ -78,6 +82,45 @@
     </div>
 </div>
 {% endif %}
+
+<!-- Filtre Scheduling Team : département seulement -->
+{% if user_role == 'scheduling_team' %}
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fas fa-filter me-2"></i> Filter by Department
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Department</label>
+                <select name="department" class="form-select" onchange="this.form.submit()">
+                    <option value="all">All Departments</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.id }}"
+                        {% if filter_department == dept.id|stringformat:'s' %}selected{% endif %}>
+                        {{ dept.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="hidden" name="month" value="{{ month }}">
+            <input type="hidden" name="year" value="{{ year }}">
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Légende -->
+<div class="d-flex gap-3 mb-3 align-items-center">
+    <div class="d-flex align-items-center gap-1">
+        <div style="width:16px; height:16px; background:#1a3a6b; border-radius:3px;"></div>
+        <small class="text-muted">Paid leave</small>
+    </div>
+    <div class="d-flex align-items-center gap-1">
+        <div style="width:16px; height:16px; background:#dc3545; border-radius:3px;"></div>
+        <small class="text-muted">Unpaid leave</small>
+    </div>
+</div>
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">

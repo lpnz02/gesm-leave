@@ -6,12 +6,13 @@ import uuid
 class User(AbstractUser):
     ROLE_CHOICES = [
     ('teacher', 'Teacher'),
-    ('admin', 'Admin'),  # ← était 'admin'
+    ('admin', 'Admin'),
     ('head_of_department', 'Head of Department'),
     ('head_of_school', 'Head of School'),
     ('head_of_admin', 'Head of Administration'),
     ('hr', 'HR'),
     ('scheduling_team', 'Scheduling Team'),
+    ('calendar_access', 'Calendar Access'),  
 ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     department = models.ForeignKey(

@@ -138,7 +138,12 @@
                 {% for leave in all_leaves %}
                 <tr>
                     <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
-                    <td>{{ leave.leave_type }}</td>
+                    <td>
+                        {{ leave.leave_type }}
+                        {% if leave.half_day != 'none' %}
+                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                        {% endif %}
+                    </td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
                     <td>
@@ -151,6 +156,12 @@
                             <span class="badge-rejected">Rejected</span>
                         {% else %}
                             <span class="badge-pending">Pending</span>
+                        {% endif %}
+                        {% if leave.is_unpaid %}
+                            <br><span class="badge"
+                                style="background-color:#dc3545; color:white; font-size:0.7rem;">
+                                Unpaid
+                            </span>
                         {% endif %}
                     </td>
                     <td>
@@ -173,44 +184,97 @@
     </div>
 </div>
 
+<!-- Adjust Leave Balance -->
 <div class="card mb-4">
     <div class="card-header">
         <i class="fas fa-sliders-h me-2"></i> Adjust Leave Balance
     </div>
     <div class="card-body">
-        <form method="post" action="{% url 'adjust_balance' %}">
-            {% csrf_token %}
-            <div class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Employee</label>
-                    <select name="user_id" class="form-select">
-                        {% for u in all_users %}
-                        <option value="{{ u.id }}">{{ u.first_name }} {{ u.last_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Leave Type</label>
-                    <select name="leave_type" class="form-select">
-                        <option value="vacation_leave">Vacation Leave</option>
-                        <option value="sick_leave">Sick Leave</option>
-                        <option value="emergency_leave">Emergency Leave</option>
-                        <option value="maternity_paternity_leave">Maternity/Paternity Leave</option>
-                        <option value="bereavement_leave">Bereavement Leave</option>
-                        <option value="others">Other</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold">Days Remaining</label>
-                    <input type="number" name="days_remaining" class="form-control" placeholder="Days">
-                </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fas fa-save me-1"></i> Update
-                    </button>
-                </div>
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label class="form-label fw-bold">Staff Type</label>
+                <select class="form-select" id="staff-type-select" onchange="toggleBalanceForm()">
+                    <option value="">-- Select type --</option>
+                    <option value="teacher">Teacher / Head of Department</option>
+                    <option value="admin">Admin</option>
+                </select>
             </div>
-        </form>
+        </div>
+
+        <!-- Profs/HOD : changer le total de jours -->
+        <div id="teacher-form" style="display:none;">
+            <form method="post" action="{% url 'adjust_balance' %}">
+                {% csrf_token %}
+                <input type="hidden" name="balance_type" value="teacher">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Teacher / HOD</label>
+                        <select name="user_id" class="form-select">
+                            {% for u in all_users %}
+                                {% if u.role == 'teacher' or u.role == 'head_of_department' %}
+                                <option value="{{ u.id }}">
+                                    {{ u.first_name }} {{ u.last_name }} ({{ u.role }})
+                                </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">New Total Days</label>
+                        <input type="number" name="total_days" class="form-control"
+                               placeholder="Default: 30" step="0.5" min="0">
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-save me-1"></i> Update
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <!-- Admins : changer par catégorie -->
+        <div id="admin-form" style="display:none;">
+            <form method="post" action="{% url 'adjust_balance' %}">
+                {% csrf_token %}
+                <input type="hidden" name="balance_type" value="admin">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Admin</label>
+                        <select name="user_id" class="form-select">
+                            {% for u in all_users %}
+                                {% if u.role == 'admin' %}
+                                <option value="{{ u.id }}">
+                                    {{ u.first_name }} {{ u.last_name }}
+                                </option>
+                                {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Leave Type</label>
+                        <select name="leave_type" class="form-select">
+                            <option value="vacation_leave">Vacation Leave</option>
+                            <option value="sick_leave">Sick Leave</option>
+                            <option value="emergency_leave">Emergency Leave</option>
+                            <option value="maternity_paternity_leave">Maternity/Paternity Leave</option>
+                            <option value="bereavement_leave">Bereavement Leave</option>
+                            <option value="others">Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold">Days Remaining</label>
+                        <input type="number" name="days_remaining" class="form-control"
+                               placeholder="Days" step="0.5" min="0">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-save me-1"></i> Update
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -279,7 +343,7 @@
         <form method="post" action="{% url 'reset_balances' %}" class="d-inline">
             {% csrf_token %}
             <button type="submit" class="btn btn-warning me-2"
-                onclick="return confirm('Reset all leave balances for the new year? Unused days will be carried over for employees.')">
+                onclick="return confirm('Reset all leave balances for the new year? Unused vacation days will be carried over for admins.')">
                 <i class="fas fa-sync-alt me-1"></i> Reset for New Year
             </button>
         </form>
@@ -292,5 +356,15 @@
         </form>
     </div>
 </div>
+
+<script>
+function toggleBalanceForm() {
+    const staffType = document.getElementById('staff-type-select').value;
+    document.getElementById('teacher-form').style.display =
+        staffType === 'teacher' ? 'block' : 'none';
+    document.getElementById('admin-form').style.display =
+        staffType === 'admin' ? 'block' : 'none';
+}
+</script>
 
 {% endblock %}

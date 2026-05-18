@@ -18,6 +18,7 @@ class SubmitLeaveView(LoginRequiredMixin, View):
         if form.is_valid():
             leave = form.save(commit=False)
             leave.user = request.user
+            leave.half_day = request.POST.get('half_day', 'none')
             pdf_file = request.FILES.get('pdf_attachment')
 
             if request.user.role == 'teacher':
@@ -34,8 +35,7 @@ class SubmitLeaveView(LoginRequiredMixin, View):
                 if pdf_file:
                     leave.pdf_attachment = pdf_file
                 leave.save()
-                hoa_users = User.objects.filter(role='head_of_admin')
-                for hoa in hoa_users:
+                for hoa in User.objects.filter(role='head_of_admin'):
                     self.send_notification_email(leave, hoa, pdf_file)
 
             elif request.user.role == 'hr':
@@ -43,8 +43,7 @@ class SubmitLeaveView(LoginRequiredMixin, View):
                 if pdf_file:
                     leave.pdf_attachment = pdf_file
                 leave.save()
-                hoa_users = User.objects.filter(role='head_of_admin')
-                for hoa in hoa_users:
+                for hoa in User.objects.filter(role='head_of_admin'):
                     self.send_notification_email(leave, hoa, pdf_file)
 
             elif request.user.role == 'head_of_department':
@@ -52,8 +51,7 @@ class SubmitLeaveView(LoginRequiredMixin, View):
                 if pdf_file:
                     leave.pdf_attachment = pdf_file
                 leave.save()
-                hos_users = User.objects.filter(role='head_of_school')
-                for hos in hos_users:
+                for hos in User.objects.filter(role='head_of_school'):
                     self.send_notification_email(leave, hos, pdf_file)
 
             return redirect('leave_submitted')
@@ -61,16 +59,27 @@ class SubmitLeaveView(LoginRequiredMixin, View):
         return render(request, 'leaves/submit_leave.html', {'form': form})
 
     def send_notification_email(self, leave, recipient, pdf_file=None):
+        # formatage half day pour l'email
+        if leave.half_day == 'morning':
+            duration = 'Morning only (half day)'
+        elif leave.half_day == 'afternoon':
+            duration = 'Afternoon only (half day)'
+        else:
+            duration = 'Full day(s)'
+
         email = EmailMessage(
-            subject=f'New Leave Request from {leave.user.first_name} {leave.user.last_name}',
-            body=f'''{leave.user.first_name} {leave.user.last_name} has requested {leave.leave_type} leave from {leave.start_leave} to {leave.end_leave}.
-
-Reason: {leave.reason_for_leave}
-
-Please log in to the GESM Leave Management System to approve or reject this request:
-http://127.0.0.1:8000/dashboard/
-
-Thank you.''',
+            subject=f'New Leave Request — {leave.user.first_name} {leave.user.last_name}',
+            body=(
+                f'Hello,\n\n'
+                f'{leave.user.first_name} {leave.user.last_name} has submitted a leave request.\n\n'
+                f'Leave Type: {leave.leave_type.replace("_", " ").title()}\n'
+                f'Duration: {duration}\n'
+                f'From: {leave.start_leave}\n'
+                f'To: {leave.end_leave}\n'
+                f'Reason: {leave.reason_for_leave}\n\n'
+                f'Please log in to your dashboard to approve or reject this request.\n\n'
+                f'GESM Leave Management'
+            ),
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[recipient.email],
         )
@@ -87,7 +96,6 @@ Thank you.''',
             )
 
         email.send()
-
 
 class LeaveSubmittedView(View):
     def get(self, request):

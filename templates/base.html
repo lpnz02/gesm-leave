@@ -167,7 +167,8 @@
 <!-- Navbar -->
 <nav class="navbar navbar-expand-lg">
     <div class="container-fluid px-4">
-        <a class="navbar-brand d-flex align-items-center" href="{% url 'dashboard' %}">
+        <a class="navbar-brand d-flex align-items-center"
+           href="{% if request.user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'login' %}{% endif %}">
             <img src="{% static 'images/logo.png' %}" alt="GESM Logo">
             <span>GESM Leave Management</span>
         </a>
@@ -178,7 +179,7 @@
                 {{ request.user.first_name }} {{ request.user.last_name }}
             </span>
             <a href="{% url 'change_password' %}" class="btn btn-outline-light btn-sm me-2"
-               title="Change Password">
+               title="Account Settings">
                 <i class="fas fa-key"></i>
             </a>
             <a href="{% url 'logout' %}" class="btn btn-warning btn-sm">
@@ -208,7 +209,7 @@
                 </a>
                 {% endif %}
 
-                {% if request.user.role == 'hr' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' or request.user.role == 'head_of_admin' or request.user.role == 'scheduling_team' %}
+                {% if request.user.role == 'hr' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' or request.user.role == 'head_of_admin' or request.user.role == 'scheduling_team' or request.user.role == 'calendar_access' %}
                 <a class="nav-link" href="{% url 'calendar' %}">
                     <i class="fas fa-calendar-alt"></i> Calendar
                 </a>

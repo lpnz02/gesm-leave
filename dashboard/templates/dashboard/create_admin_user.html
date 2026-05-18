@@ -1,15 +1,68 @@
-<h2>Create Admin Account</h2>
-<form method="post">
-    {% csrf_token %}
-    <input type="text" name="username" placeholder="Username" required><br>
-    <input type="text" name="first_name" placeholder="First Name" required><br>
-    <input type="text" name="last_name" placeholder="Last Name" required><br>
-    <input type="email" name="email" placeholder="Email" required><br>
-    <select name="role">
-        <option value="hr">HR</option>
-        <option value="head_of_admin">Head of Administration</option>
-    </select><br>
-    <input type="password" name="password" placeholder="Password" required><br>
-    <button type="submit">Create Account</button>
-</form>
-<a href="{% url 'dashboard' %}">Back to Dashboard</a>
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="d-flex align-items-center mb-4">
+            <a href="{% url 'dashboard' %}" class="btn btn-warning btn-sm me-3">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+            <h2 class="mb-0">
+                <i class="fas fa-user-plus me-2"></i> Create Admin Account
+            </h2>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-user-cog me-2"></i> New Account
+            </div>
+            <div class="card-body p-4">
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Username</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">First Name</label>
+                        <input type="text" name="first_name" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Last Name</label>
+                        <input type="text" name="last_name" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Email</label>
+                        <input type="email" name="email" class="form-control" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Role</label>
+                        <select name="role" class="form-select">
+                            <option value="hr">HR</option>
+                            <option value="head_of_admin">Head of Administration</option>
+                            <option value="scheduling_team">Scheduling Team</option>
+                            <option value="calendar_access">Calendar Access</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Password</label>
+                        <input type="password" name="password" class="form-control" required>
+                    </div>
+
+                    <div class="d-grid mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-user-plus me-2"></i> Create Account
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -24,22 +24,30 @@ class DashboardView(LoginRequiredMixin, View):
             leaves = Leave.objects.filter(user=user)
             days_used = 0
             for leave in leaves.filter(status='approved'):
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        days_used += 1
-                    current += timedelta(days=1)
+                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                    days_used += 0.5
+                else:
+                    current = leave.start_leave
+                    while current <= leave.end_leave:
+                        if current.weekday() < 5:
+                            days_used += 1
+                        current += timedelta(days=1)
 
-            total = 30
+            balance = LeaveBalance.objects.filter(
+                user=user, leave_type='vacation_leave'
+            ).first()
+            remaining = float(balance.days_remaining) if balance else 30 - days_used
+            total = float(balance.total_days) if balance else 30
+
             leave_summary = [{
                 'type': 'Total Leave (All Types)',
                 'used': days_used,
                 'total': total,
-                'remaining': total - days_used,
-                'unpaid': (total - days_used) < 0,
+                'remaining': remaining,  
+                'unpaid': remaining < 0,
             }]
 
-            return render(request, 'dashboard/admin_dashboard.html', {
+            return render(request, 'dashboard/employee_dashboard.html', {
                 'leaves': leaves,
                 'total_days_used': days_used,
                 'leave_summary': leave_summary,
@@ -53,32 +61,30 @@ class DashboardView(LoginRequiredMixin, View):
             total_days_used = 0
 
             for balance in balances:
-                # calculer days_used seulement
                 days_used = 0
                 for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
-                    current = leave.start_leave
-                    while current <= leave.end_leave:
-                        if current.weekday() < 5:
-                            days_used += 1
-                        current += timedelta(days=1)
-
-                # mettre à jour days_used seulement — pas days_remaining !
-                balance.days_used = days_used
-                balance.save()
+                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                        days_used += 0.5
+                    else:
+                        current = leave.start_leave
+                        while current <= leave.end_leave:
+                            if current.weekday() < 5:
+                                days_used += 1
+                            current += timedelta(days=1)
 
                 total_days_used += days_used
-                is_maternity = balance.leave_type == 'maternity_paternity_leave'
+                no_limit = balance.total_days == 0
 
                 leave_summary.append({
                     'type': balance.leave_type.replace('_', ' ').title(),
                     'used': days_used,
-                    'total': None if is_maternity else balance.total_days,
-                    'remaining': None if is_maternity else balance.days_remaining,
+                    'total': None if no_limit else balance.total_days,
+                    'remaining': None if no_limit else balance.days_remaining,
                     'carried_over': balance.carried_over,
-                    'unpaid': False if is_maternity else balance.days_remaining < 0,
+                    'unpaid': False if no_limit else balance.days_remaining < 0,
                 })
 
-            return render(request, 'dashboard/admin_dashboard.html', {
+            return render(request, 'dashboard/employee_dashboard.html', {
                 'leaves': leaves,
                 'total_days_used': total_days_used,
                 'leave_summary': leave_summary,
@@ -95,21 +101,29 @@ class DashboardView(LoginRequiredMixin, View):
             teacher_leaves = Leave.objects.filter(user__in=subordinates)
             own_leaves = Leave.objects.filter(user=user)
 
-            # calcul global comme les profs — ignore les balances par catégorie
             days_used = 0
             for leave in own_leaves.filter(status='approved'):
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        days_used += 1
-                    current += timedelta(days=1)
+                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                    days_used += 0.5
+                else:
+                    current = leave.start_leave
+                    while current <= leave.end_leave:
+                        if current.weekday() < 5:
+                            days_used += 1
+                        current += timedelta(days=1)
+
+            balance = LeaveBalance.objects.filter(
+                user=user, leave_type='vacation_leave'
+            ).first()
+            remaining = float(balance.days_remaining) if balance else 30 - days_used
+            total = float(balance.total_days) if balance else 30
 
             leave_summary = [{
                 'type': 'Total Leave (All Types)',
                 'used': days_used,
-                'total': 30,
-                'remaining': 30 - days_used,
-                'unpaid': (30 - days_used) < 0,
+                'total': total,
+                'remaining': remaining,  # ← depuis la balance !
+                'unpaid': remaining < 0,
             }]
 
             return render(request, 'dashboard/hod_dashboard.html', {
@@ -135,7 +149,6 @@ class DashboardView(LoginRequiredMixin, View):
                     'teachers': hod_teachers,
                 })
 
-            # leaves des profs ET des HOD avec status pending_hos
             leaves = Leave.objects.filter(
                 user__role__in=['teacher', 'head_of_department'],
                 status='pending_hos'
@@ -150,7 +163,7 @@ class DashboardView(LoginRequiredMixin, View):
             })
 
         elif user.role == 'head_of_admin':
-            admins = User.objects.filter(role__in=['admin', 'hr'])  # ← ajoute 'hr'
+            admins = User.objects.filter(role__in=['admin', 'hr'])
             leaves = Leave.objects.filter(user__in=admins)
             return render(request, 'dashboard/hoa_dashboard.html', {
                 'admins': admins,
@@ -165,7 +178,6 @@ class DashboardView(LoginRequiredMixin, View):
             all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
             pending_users = User.objects.filter(is_active=False, is_email_verified=True)
 
-            # alertes
             hods_no_dept = User.objects.filter(role='head_of_department', department=None)
             teachers_no_superior = User.objects.filter(role='teacher', superior=None)
             no_hos = not User.objects.filter(role='head_of_school', is_active=True).exists()
@@ -187,34 +199,54 @@ class DashboardView(LoginRequiredMixin, View):
                 'no_hoa': no_hoa,
                 'stale_leaves': stale_leaves,
             })
-        
+
         elif user.role == 'scheduling_team':
             return render(request, 'dashboard/scheduling_dashboard.html', {})
 
+        elif user.role == 'calendar_access':
+            return render(request, 'dashboard/scheduling_dashboard.html', {})
+
         else:
-            return render(request, 'dashboard/admin_dashboard.html', {
+            return render(request, 'dashboard/employee_dashboard.html', {
                 'leaves': [],
                 'total_days_used': 0,
             })
-
 
 class AdjustBalanceView(LoginRequiredMixin, View):
     def post(self, request):
         if request.user.role != 'hr':
             return redirect('dashboard')
-        user_id = request.POST.get('user_id')
-        leave_type = request.POST.get('leave_type')
-        days_remaining = request.POST.get('days_remaining')
-        user = User.objects.get(id=user_id)
-        balance, created = LeaveBalance.objects.get_or_create(
-            user=user,
-            leave_type=leave_type,
-            defaults={'total_days': 0, 'days_used': 0, 'days_remaining': 0, 'carried_over': 0}
-        )
-        balance.days_remaining = int(days_remaining)
-        balance.save()
-        return redirect('dashboard')
 
+        user_id = request.POST.get('user_id')
+        balance_type = request.POST.get('balance_type')
+        user = User.objects.get(id=user_id)
+
+        if balance_type == 'teacher':
+            total_days = float(request.POST.get('total_days', 30))
+            balance = LeaveBalance.objects.filter(
+                user=user, leave_type='vacation_leave'
+            ).first()
+            if balance:
+                balance.days_remaining = total_days  # exactement ce que le HR met
+                balance.total_days = total_days + float(balance.days_used)
+                balance.save()
+
+        elif balance_type == 'admin':
+            # admins : changer par catégorie
+            leave_type = request.POST.get('leave_type')
+            days_remaining = float(request.POST.get('days_remaining', 0))
+            balance, created = LeaveBalance.objects.get_or_create(
+                user=user,
+                leave_type=leave_type,
+                defaults={'total_days': days_remaining, 'days_used': 0,
+                          'days_remaining': days_remaining, 'carried_over': 0}
+            )
+            if not created:
+                balance.days_remaining = days_remaining
+                balance.total_days = days_remaining + float(balance.days_used)
+                balance.save()
+
+        return redirect('dashboard')
 
 class CreateAdminUserView(LoginRequiredMixin, View):
     def get(self, request):
@@ -259,7 +291,7 @@ class CalendarView(LoginRequiredMixin, View):
     def get(self, request):
         user = request.user
 
-        allowed_roles = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin', 'scheduling_team']
+        allowed_roles = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin', 'scheduling_team', 'calendar_access']
         if user.role not in allowed_roles:
             return redirect('dashboard')
 
@@ -280,9 +312,9 @@ class CalendarView(LoginRequiredMixin, View):
         elif user.role == 'head_of_school':
             leaves = leaves.filter(user__role__in=['teacher', 'head_of_department'])
             if filter_department != 'all':
-                leaves = leaves.filter(user__superior__id=filter_department)
+                leaves = leaves.filter(user__department__id=filter_department)
 
-        elif user.role == 'head_of_admin': 
+        elif user.role == 'head_of_admin':
             leaves = leaves.filter(user__role__in=['admin', 'hr'])
 
         elif user.role == 'hr':
@@ -292,31 +324,23 @@ class CalendarView(LoginRequiredMixin, View):
                 leaves = leaves.filter(user__role='head_of_department')
             elif filter_type == 'admin':
                 leaves = leaves.filter(user__role__in=['admin', 'hr'])
-            
-            # filtre par département
             if filter_department != 'all':
-                if filter_type == 'teacher':
-                    leaves = leaves.filter(user__department__id=filter_department)
-                elif filter_type == 'hod':
-                    leaves = leaves.filter(user__department__id=filter_department)
-                else:
-                    leaves = leaves.filter(user__department__id=filter_department)
+                leaves = leaves.filter(user__department__id=filter_department)
 
         elif user.role == 'scheduling_team':
-            leaves = leaves.filter(user__role='teacher')
+            leaves = leaves.filter(user__role__in=['teacher', 'head_of_department'])
+            if filter_department != 'all':
+                leaves = leaves.filter(user__department__id=filter_department)
 
-        colors = [
-            '#e74c3c', '#3498db', '#2ecc71', '#9b59b6',
-            '#e67e22', '#1abc9c', '#e91e63', '#ff5722',
-            '#607d8b', '#795548'
-        ]
-
-        user_colors = {}
-        color_index = 0
-        for leave in leaves:
-            if leave.user.id not in user_colors:
-                user_colors[leave.user.id] = colors[color_index % len(colors)]
-                color_index += 1
+        elif user.role == 'calendar_access':
+            if filter_type == 'teacher':
+                leaves = leaves.filter(user__role='teacher')
+            elif filter_type == 'hod':
+                leaves = leaves.filter(user__role='head_of_department')
+            elif filter_type == 'admin':
+                leaves = leaves.filter(user__role__in=['admin', 'hr'])
+            if filter_department != 'all':
+                leaves = leaves.filter(user__department__id=filter_department)
 
         cal_matrix = cal.monthcalendar(year, month)
         calendar_data = []
@@ -333,8 +357,12 @@ class CalendarView(LoginRequiredMixin, View):
                         for leave in leaves:
                             if leave.start_leave <= current_date <= leave.end_leave:
                                 absents.append({
-                                    'name': f"{leave.user.first_name} {leave.user.last_name}",
-                                    'color': user_colors.get(leave.user.id, '#3498db')
+                                    'name': (
+                                        f"{leave.user.first_name} {leave.user.last_name}"
+                                        + (" (AM)" if leave.half_day == 'morning' else
+                                           " (PM)" if leave.half_day == 'afternoon' else "")
+                                    ),
+                                    'color': '#dc3545' if leave.is_unpaid else '#1a3a6b'
                                 })
                     week_data.append({
                         'day': day,
@@ -344,7 +372,7 @@ class CalendarView(LoginRequiredMixin, View):
             calendar_data.append(week_data)
 
         from accounts.models import Department
-        departments = Department.objects.all()  
+        departments = Department.objects.all()
 
         if month == 1:
             prev_month, prev_year = 12, year - 1
@@ -372,7 +400,6 @@ class CalendarView(LoginRequiredMixin, View):
             'departments': departments,
             'user_role': user.role,
         })
-
 
 class PromoteUserView(LoginRequiredMixin, View):
     def post(self, request, user_id):
@@ -444,51 +471,68 @@ class UserDetailView(LoginRequiredMixin, View):
         leave_summary = []
         total_days_used = 0
 
-        if target_user.role == 'teacher':
+        if target_user.role in ['teacher', 'head_of_department']:
             days_used = 0
             for leave in leaves.filter(status='approved'):
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        days_used += 1
-                    current += timedelta(days=1)
-            total_days_used = days_used
-            leave_summary.append({
-                'type': 'Total Leave (All Types)',
-                'used': days_used,
-                'total': 30,
-                'remaining': 30 - days_used,
-                'unpaid': (30 - days_used) < 0,
-            })
-        else:
-            for balance in balances:
-                days_used = 0
-                for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
+                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                    days_used += 0.5
+                else:
                     current = leave.start_leave
                     while current <= leave.end_leave:
                         if current.weekday() < 5:
                             days_used += 1
                         current += timedelta(days=1)
 
+            # lire depuis la balance comme le dashboard
+            balance = LeaveBalance.objects.filter(
+                user=target_user, leave_type='vacation_leave'
+            ).first()
+            remaining = float(balance.days_remaining) if balance else 30 - days_used
+            total = float(balance.total_days) if balance else 30
+
+            total_days_used = days_used
+            leave_summary.append({
+                'type': 'Total Leave (All Types)',
+                'used': days_used,
+                'total': total,
+                'remaining': remaining,  # ← depuis la balance, pas recalculé !
+                'carried_over': 0,
+                'unpaid': remaining < 0,
+            })
+
+        elif target_user.role == 'admin':
+            for balance in balances:
+                days_used = 0
+                for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
+                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                        days_used += 0.5
+                    else:
+                        current = leave.start_leave
+                        while current <= leave.end_leave:
+                            if current.weekday() < 5:
+                                days_used += 1
+                            current += timedelta(days=1)
+
                 total_days_used += days_used
-                is_maternity = balance.leave_type == 'maternity_paternity_leave'
+                no_limit = balance.total_days == 0
 
                 leave_summary.append({
                     'type': balance.leave_type.replace('_', ' ').title(),
                     'used': days_used,
-                    'total': None if is_maternity else balance.total_days,
-                    'remaining': None if is_maternity else balance.days_remaining,
-                    'unpaid': False if is_maternity else balance.days_remaining < 0,
+                    'total': None if no_limit else balance.total_days,
+                    'remaining': None if no_limit else balance.days_remaining,
+                    'carried_over': balance.carried_over,
+                    'unpaid': False if no_limit else balance.days_remaining < 0,
                 })
 
+        # HOS, HOA, HR, scheduling → pas de balance
         return render(request, 'dashboard/user_detail.html', {
             'target_user': target_user,
             'leaves': leaves,
             'leave_summary': leave_summary,
             'total_days_used': total_days_used,
         })
-
-
+    
 class ExportLeavesView(LoginRequiredMixin, View):
     def get(self, request):
         if request.user.role != 'hr':
@@ -520,28 +564,33 @@ class ExportLeavesView(LoginRequiredMixin, View):
         approved_fill = PatternFill('solid', start_color='d4edda', end_color='d4edda')
         rejected_fill = PatternFill('solid', start_color='f8d7da', end_color='f8d7da')
         pending_fill = PatternFill('solid', start_color='fff3cd', end_color='fff3cd')
+        unpaid_fill = PatternFill('solid', start_color='f8d7da', end_color='f8d7da')
 
-        ws.merge_cells('A1:H1')
+        ws.merge_cells('A1:J1')
         ws['A1'] = 'GESM Leave Management — Leave Requests Report'
         ws['A1'].font = title_font
         ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[1].height = 30
 
-        ws.merge_cells('A2:H2')
+        ws.merge_cells('A2:J2')
         ws['A2'] = f'Generated on: {date.today().strftime("%d/%m/%Y")}'
         ws['A2'].font = date_font
         ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
         ws.row_dimensions[2].height = 20
         ws.row_dimensions[3].height = 10
 
-        headers = ['Person', 'Role', 'Start Date', 'Last Day', 'Leave Type', 'Reason', 'Status', 'Submitted On']
+        headers = [
+            'Person', 'Role', 'Start Date', 'Last Day',
+            'Leave Type', 'Duration', 'Reason',
+            'Status', 'Unpaid Days', 'Submitted On'
+        ]
         for col, header in enumerate(headers, 1):
             c = ws.cell(row=4, column=col, value=header)
             c.font = header_font
             c.fill = header_fill
             c.alignment = header_align
             c.border = thin_border
-        ws.row_dimensions[4].height = 30
+        ws.row_dimensions[4].height = 40
 
         leaves = Leave.objects.filter(user__isnull=False).exclude(
             user__role='head_of_admin'
@@ -552,14 +601,83 @@ class ExportLeavesView(LoginRequiredMixin, View):
             name = f"{leave.user.first_name} {leave.user.last_name}" if leave.user else "Deleted User"
             role = leave.user.role if leave.user else "unknown"
 
+            # calcul durée avec half day
+            if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                duration = f"0.5 day ({leave.half_day.title()})"
+            else:
+                count = 0
+                current = leave.start_leave
+                while current <= leave.end_leave:
+                    if current.weekday() < 5:
+                        count += 1
+                    current += timedelta(days=1)
+                duration = f"{count} day(s)"
+
+            # calcul unpaid days
+            # calcul unpaid days
+            unpaid_days = '—'
+            if leave.status == 'approved' and leave.user:
+
+                # si marqué manuellement comme unpaid par HOS/HOA
+                if leave.is_unpaid:
+                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                        unpaid_days = 0.5
+                    else:
+                        count = 0
+                        cur = leave.start_leave
+                        while cur <= leave.end_leave:
+                            if cur.weekday() < 5:
+                                count += 1
+                            cur += timedelta(days=1)
+                        unpaid_days = count
+
+                elif leave.user.role == 'admin':
+                    balance = LeaveBalance.objects.filter(
+                        user=leave.user,
+                        leave_type=leave.leave_type
+                    ).order_by('-total_days').first()
+                    if balance and balance.days_remaining < 0:
+                        unpaid_days = abs(balance.days_remaining)
+
+                elif leave.user.role in ['teacher', 'head_of_department', 'head_of_school']:
+                    all_approved = Leave.objects.filter(
+                        user=leave.user,
+                        status='approved'
+                    )
+                    total_used = 0
+                    for l in all_approved:
+                        if l.half_day in ['morning', 'afternoon'] and l.start_leave == l.end_leave:
+                            total_used += 0.5
+                        else:
+                            cur = l.start_leave
+                            while cur <= l.end_leave:
+                                if cur.weekday() < 5:
+                                    total_used += 1
+                                cur += timedelta(days=1)
+
+                    if total_used > 30:
+                        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                            leave_days = 0.5
+                        else:
+                            leave_days = 0
+                            cur = leave.start_leave
+                            while cur <= leave.end_leave:
+                                if cur.weekday() < 5:
+                                    leave_days += 1
+                                cur += timedelta(days=1)
+                        over = total_used - 30
+                        unpaid_days = min(leave_days, over)
+
             data = [
                 name,
                 role.replace('_', ' ').title(),
                 leave.start_leave.strftime('%d/%m/%Y'),
                 leave.end_leave.strftime('%d/%m/%Y'),
                 leave.leave_type.replace('_', ' ').title(),
+                duration,
                 leave.reason_for_leave,
                 leave.status.replace('_', ' ').title(),
+                unpaid_days,
                 timezone.localtime(leave.created_at).strftime('%d/%m/%Y %H:%M'),
             ]
 
@@ -567,9 +685,9 @@ class ExportLeavesView(LoginRequiredMixin, View):
                 c = ws.cell(row=row_idx, column=col, value=value)
                 c.font = Font(name='Arial', size=10)
                 c.border = thin_border
-                c.alignment = cell_align if col in [1, 6] else center_align
+                c.alignment = cell_align if col in [1, 7] else center_align
 
-                if col == 7:
+                if col == 8:  # Status
                     if leave.status == 'approved':
                         c.fill = approved_fill
                         c.font = Font(name='Arial', size=10, bold=True, color='155724')
@@ -579,12 +697,16 @@ class ExportLeavesView(LoginRequiredMixin, View):
                     else:
                         c.fill = pending_fill
                         c.font = Font(name='Arial', size=10, bold=True, color='856404')
+                elif col == 9 and unpaid_days != '—':  # Unpaid Days
+                    c.fill = unpaid_fill
+                    c.font = Font(name='Arial', size=10, bold=True, color='721c24')
                 elif is_alt:
                     c.fill = alt_fill
 
             ws.row_dimensions[row_idx].height = 20
 
-        col_widths = [25, 20, 15, 15, 25, 40, 20, 20]
+        # largeurs généreuses pour éviter les coupures
+        col_widths = [25, 22, 14, 14, 22, 20, 38, 18, 18, 22]
         for col, width in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(col)].width = width
 
@@ -596,7 +718,6 @@ class ExportLeavesView(LoginRequiredMixin, View):
         response['Content-Disposition'] = f'attachment; filename="GESM_Leave_Report_{date.today().strftime("%Y%m%d")}.xlsx"'
         wb.save(response)
         return response
-
 
 from accounts.models import User, Department
 
@@ -671,7 +792,6 @@ class EditUserView(LoginRequiredMixin, View):
                         teacher.save()
             target_user.department = None
 
-        # assigner le superior selon le rôle
         if new_role == 'head_of_department':
             hos = User.objects.filter(role='head_of_school').first()
             target_user.superior = hos
@@ -686,7 +806,7 @@ class EditUserView(LoginRequiredMixin, View):
 
         target_user.save()
 
-        # mettre à jour les balances si rôle change
+
         if old_role != new_role:
             if new_role in ['teacher', 'head_of_department', 'head_of_school']:
                 LeaveBalance.objects.filter(user=target_user).delete()
@@ -726,8 +846,8 @@ class ResetBalancesView(LoginRequiredMixin, View):
             'sick_leave': 15,
             'bereavement_leave': 5,
             'emergency_leave': 3,
-            'maternity_paternity_leave': 0,
-            'others': 0,
+            'maternity_paternity_leave': 1,
+            'others': 1,
         }
 
         # reset admins/admins — carry over SEULEMENT vacation_leave
@@ -805,6 +925,7 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         # HOS approuve → approved + email prof + HOD + HOS + HR + scheduling
         elif request.user.role == 'head_of_school' and leave.status == 'pending_hos':
             leave.status = 'approved'
+            leave.is_unpaid = request.POST.get('is_unpaid') == '1'
             leave.save()
             self._update_balance(leave)
 
@@ -836,6 +957,7 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         # HOA approuve → approved + email admin + HOA + HR
         elif request.user.role == 'head_of_admin' and leave.status == 'pending_hoa':
             leave.status = 'approved'
+            leave.is_unpaid = request.POST.get('is_unpaid') == '1'
             leave.save()
             self._update_balance(leave)
 
@@ -895,19 +1017,24 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         email.send()
 
     def _update_balance(self, leave):
-        count = 0
-        current = leave.start_leave
-        while current <= leave.end_leave:
-            if current.weekday() < 5:
-                count += 1
-            current += timedelta(days=1)
+        # demi-journée sur un seul jour
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+            count = 0.5
+        else:
+            count = 0
+            current = leave.start_leave
+            while current <= leave.end_leave:
+                if current.weekday() < 5:
+                    count += 1
+                current += timedelta(days=1)
+
         balance, created = LeaveBalance.objects.get_or_create(
             user=leave.user,
             leave_type=leave.leave_type,
-            defaults={'total_days': 0, 'days_used': 0, 'days_remaining': 0}
+            defaults={'total_days': 0, 'days_used': 0, 'days_remaining': 0, 'carried_over': 0}
         )
-        balance.days_used += count
-        balance.days_remaining -= count
+        balance.days_used = float(balance.days_used) + count
+        balance.days_remaining = float(balance.days_remaining) - count
         balance.save()
 
 
@@ -921,6 +1048,7 @@ class RejectLeaveDashboardView(LoginRequiredMixin, View):
             return redirect('dashboard')
 
         leave.status = 'rejected'
+        leave.is_unpaid = request.POST.get('is_unpaid') == '1'
         leave.save()
 
         recipients = set()
@@ -1109,24 +1237,34 @@ class ChangePasswordView(LoginRequiredMixin, View):
         return render(request, 'accounts/change_password.html')
 
     def post(self, request):
+        new_username = request.POST.get('new_username', '').strip()
         current_password = request.POST.get('current_password')
         new_password1 = request.POST.get('new_password1')
         new_password2 = request.POST.get('new_password2')
 
-        if not request.user.check_password(current_password):
-            messages.error(request, 'Current password is incorrect.')
-            return render(request, 'accounts/change_password.html')
+        # changement username
+        if new_username and new_username != request.user.username:
+            if User.objects.filter(username=new_username).exclude(id=request.user.id).exists():
+                messages.error(request, 'This username is already taken.')
+                return render(request, 'accounts/change_password.html')
+            request.user.username = new_username
+            request.user.save()
+            messages.success(request, 'Username updated successfully!')
 
-        if new_password1 != new_password2:
-            messages.error(request, 'New passwords do not match.')
-            return render(request, 'accounts/change_password.html')
+        # changement mot de passe (optionnel si fields vides)
+        if current_password or new_password1 or new_password2:
+            if not request.user.check_password(current_password):
+                messages.error(request, 'Current password is incorrect.')
+                return render(request, 'accounts/change_password.html')
+            if new_password1 != new_password2:
+                messages.error(request, 'New passwords do not match.')
+                return render(request, 'accounts/change_password.html')
+            if len(new_password1) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return render(request, 'accounts/change_password.html')
+            request.user.set_password(new_password1)
+            request.user.save()
+            update_session_auth_hash(request, request.user)
+            messages.success(request, 'Password changed successfully!')
 
-        if len(new_password1) < 8:
-            messages.error(request, 'Password must be at least 8 characters.')
-            return render(request, 'accounts/change_password.html')
-
-        request.user.set_password(new_password1)
-        request.user.save()
-        update_session_auth_hash(request, request.user)  # reste connecté
-        messages.success(request, 'Password changed successfully!')
         return redirect('dashboard')

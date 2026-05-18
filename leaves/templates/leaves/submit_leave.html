@@ -44,6 +44,18 @@
                     </div>
 
                     <div class="mb-3">
+                        <label class="form-label fw-bold">Duration</label>
+                        <select name="half_day" class="form-select" id="half-day-select">
+                            <option value="none">Full Day(s)</option>
+                            <option value="morning">Morning only (half day)</option>
+                            <option value="afternoon">Afternoon only (half day)</option>
+                        </select>
+                        <small class="text-muted" id="half-day-hint" style="display:none;">
+                            ⚠️ For half days, start date and last day must be the same date.
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
                         <label class="form-label fw-bold">
                             Attach Document
                             <small class="text-muted">(optional)</small>
@@ -64,5 +76,17 @@
         </div>
     </div>
 </div>
-{% endblock %}
 
+<script>
+    const halfDaySelect = document.getElementById('half-day-select');
+    const halfDayHint = document.getElementById('half-day-hint');
+
+    halfDaySelect.addEventListener('change', function() {
+        if (this.value !== 'none') {
+            halfDayHint.style.display = 'block';
+        } else {
+            halfDayHint.style.display = 'none';
+        }
+    });
+</script>
+{% endblock %}

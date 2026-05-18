@@ -132,8 +132,8 @@ class ApproveUserView(LoginRequiredMixin, View):
                     'sick_leave': 15,
                     'bereavement_leave': 5,
                     'emergency_leave': 3,
-                    'maternity_paternity_leave': 0,
-                    'others': 0,
+                    'maternity_paternity_leave': 1,
+                    'others': 1,
                 }
                 for leave_type, total in defaults.items():
                     LeaveBalance.objects.get_or_create(
@@ -200,24 +200,40 @@ class ChangePasswordView(LoginRequiredMixin, View):
         return render(request, 'accounts/change_password.html')
 
     def post(self, request):
-        current_password = request.POST.get('current_password')
-        new_password1 = request.POST.get('new_password1')
-        new_password2 = request.POST.get('new_password2')
+        new_username = request.POST.get('new_username', '').strip()
+        current_password = request.POST.get('current_password', '').strip()
+        new_password1 = request.POST.get('new_password1', '').strip()
+        new_password2 = request.POST.get('new_password2', '').strip()
 
-        if not request.user.check_password(current_password):
-            messages.error(request, 'Current password is incorrect.')
-            return render(request, 'accounts/change_password.html')
+        # changement username indépendant
+        if new_username and new_username != request.user.username:
+            if User.objects.filter(username=new_username).exclude(id=request.user.id).exists():
+                messages.error(request, 'This username is already taken.')
+                return render(request, 'accounts/change_password.html')
+            request.user.username = new_username
+            request.user.save()
+            messages.success(request, 'Username updated successfully!')
 
-        if new_password1 != new_password2:
-            messages.error(request, 'New passwords do not match.')
-            return render(request, 'accounts/change_password.html')
+        # changement mot de passe — seulement si au moins un champ rempli
+        if current_password or new_password1 or new_password2:
+            if not current_password:
+                messages.error(request, 'Please enter your current password.')
+                return render(request, 'accounts/change_password.html')
+            if not request.user.check_password(current_password):
+                messages.error(request, 'Current password is incorrect.')
+                return render(request, 'accounts/change_password.html')
+            if not new_password1:
+                messages.error(request, 'Please enter a new password.')
+                return render(request, 'accounts/change_password.html')
+            if new_password1 != new_password2:
+                messages.error(request, 'New passwords do not match.')
+                return render(request, 'accounts/change_password.html')
+            if len(new_password1) < 8:
+                messages.error(request, 'Password must be at least 8 characters.')
+                return render(request, 'accounts/change_password.html')
+            request.user.set_password(new_password1)
+            request.user.save()
+            update_session_auth_hash(request, request.user)
+            messages.success(request, 'Password changed successfully!')
 
-        if len(new_password1) < 8:
-            messages.error(request, 'Password must be at least 8 characters.')
-            return render(request, 'accounts/change_password.html')
-
-        request.user.set_password(new_password1)
-        request.user.save()
-        update_session_auth_hash(request, request.user)
-        messages.success(request, 'Password changed successfully!')
         return redirect('dashboard')

@@ -45,15 +45,24 @@
                     <th>Type</th>
                     <th>Start</th>
                     <th>Last Day</th>
+                    <th>Submitted</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody>
                 {% for leave in own_leaves %}
                 <tr>
-                    <td>{{ leave.leave_type }}</td>
+                    <td>
+                        {{ leave.leave_type }}
+                        {% if leave.half_day != 'none' %}
+                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                        {% endif %}
+                    </td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
+                    <td>
+                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                    </td>
                     <td>
                         {% if leave.status == 'approved' %}
                             <span class="badge-approved">Approved</span>
@@ -68,7 +77,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="4" class="text-center text-muted">No leave requests yet.</td>
+                    <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -118,6 +127,7 @@
                     <th>Type</th>
                     <th>Start</th>
                     <th>Last Day</th>
+                    <th>Submitted</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -126,9 +136,17 @@
                 {% for leave in leaves %}
                 <tr>
                     <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
-                    <td>{{ leave.leave_type }}</td>
+                    <td>
+                        {{ leave.leave_type }}
+                        {% if leave.half_day != 'none' %}
+                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                        {% endif %}
+                    </td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
+                    <td>
+                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                    </td>
                     <td>
                         {% if leave.status == 'approved' %}
                             <span class="badge-approved">Approved</span>
@@ -158,7 +176,7 @@
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="6" class="text-center text-muted">No leave requests yet.</td>
+                    <td colspan="7" class="text-center text-muted">No leave requests yet.</td>
                 </tr>
                 {% endfor %}
             </tbody>

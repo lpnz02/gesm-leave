@@ -52,7 +52,12 @@
                 {% for leave in leaves %}
                 <tr>
                     <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
-                    <td>{{ leave.leave_type }}</td>
+                    <td>
+                        {{ leave.leave_type }}
+                        {% if leave.half_day != 'none' %}
+                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                        {% endif %}
+                    </td>
                     <td>{{ leave.start_leave }}</td>
                     <td>{{ leave.end_leave }}</td>
                     <td>
@@ -66,17 +71,37 @@
                         {% else %}
                             <span class="badge-pending">Pending</span>
                         {% endif %}
+                        {% if leave.is_unpaid %}
+                            <br><span class="badge"
+                                style="background-color:#dc3545; color:white; font-size:0.7rem;">
+                                Unpaid
+                            </span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if leave.status == 'pending_hoa' %}
+                        <div class="mb-2">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input" type="checkbox"
+                                    id="unpaid_{{ leave.id }}"
+                                    onchange="document.getElementById('is_unpaid_approve_{{ leave.id }}').value = this.checked ? '1' : '0';
+                                              document.getElementById('is_unpaid_reject_{{ leave.id }}').value = this.checked ? '1' : '0';">
+                                <label class="form-check-label text-danger fw-bold"
+                                    for="unpaid_{{ leave.id }}">
+                                    Mark as Unpaid
+                                </label>
+                            </div>
+                        </div>
                         <form method="post" action="{% url 'approve_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
+                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_approve_{{ leave.id }}">
                             <button type="submit" class="btn btn-success btn-sm">
                                 <i class="fas fa-check"></i> Approve
                             </button>
                         </form>
                         <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
+                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
                             <button type="submit" class="btn btn-danger btn-sm"
                                 onclick="return confirm('Reject this leave request?')">
                                 <i class="fas fa-times"></i> Reject
