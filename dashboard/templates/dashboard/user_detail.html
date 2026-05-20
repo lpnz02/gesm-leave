@@ -35,40 +35,48 @@
 
 <div class="card mb-4">
     <div class="card-header">
-        <i class="fas fa-chart-bar me-2"></i> Leave Balance
+        <i class="fas fa-chart-bar me-2"></i>
+        {% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}
+            Leave Status
+        {% else %}
+            Leave Balance
+        {% endif %}
     </div>
     <div class="card-body">
         <div class="row g-3">
             {% for item in leave_summary %}
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <div class="p-3 rounded text-white"
                     style="background: linear-gradient(135deg,
-                    {% cycle '#1a3a6b' '#e67e22' '#2ecc71' '#9b59b6' '#e74c3c' '#1abc9c' %},
-                    {% cycle '#2a5298' '#d35400' '#27ae60' '#8e44ad' '#c0392b' '#16a085' %});">
+                    {% if item.category == 'sick' %}#e74c3c, #c0392b
+                    {% elif item.category == 'special' %}#1a3a6b, #2a5298
+                    {% else %}#e67e22, #d35400{% endif %});">
                     <h6 class="fw-bold mb-2">{{ item.type }}</h6>
                     <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>Used</small>
+                        <small>{% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}Absences{% else %}Used{% endif %}</small>
                         <strong>{{ item.used }} days</strong>
                     </div>
-                    {% if item.remaining is not None %}
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>Remaining</small>
-                        <strong>{{ item.remaining }} days</strong>
-                    </div>
-                    {% if item.carried_over > 0 %}
-                    <div class="d-flex justify-content-between align-items-center mb-1"
-                        style="opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.3); padding-top: 4px; margin-top: 4px;">
-                        <small>↳ Unused from previous year</small>
-                        <strong>+{{ item.carried_over }} days</strong>
-                    </div>
-                    {% endif %}
-                    {% else %}
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>No limit set — contact HR</small>
-                    </div>
+                    {% if target_user.role != 'teacher' and target_user.role != 'head_of_department' %}
+                        {% if item.remaining is not None %}
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <small>Remaining</small>
+                            <strong>{{ item.remaining }} days</strong>
+                        </div>
+                        {% if item.carried_over > 0 %}
+                        <div class="d-flex justify-content-between align-items-center mb-1"
+                            style="opacity:0.85; border-top:1px solid rgba(255,255,255,0.3); padding-top:4px; margin-top:4px;">
+                            <small>↳ Unused from previous year</small>
+                            <strong>+{{ item.carried_over }} days</strong>
+                        </div>
+                        {% endif %}
+                        {% else %}
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <small>No limit set — contact HR</small>
+                        </div>
+                        {% endif %}
                     {% endif %}
                     {% if item.unpaid %}
-                    <div class="mt-2 text-center fw-bold" style="color: #ffeb3b;">
+                    <div class="mt-2 text-center fw-bold" style="color:#ffeb3b;">
                         ⚠️ Unpaid Leave
                     </div>
                     {% endif %}
@@ -110,6 +118,11 @@
                             <span class="badge-approved">Approved</span>
                         {% elif leave.status == 'rejected' %}
                             <span class="badge-rejected">Rejected</span>
+                            {% if leave.rejection_reason %}
+                                <br><small class="text-danger">
+                                    <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                                </small>
+                            {% endif %}
                         {% else %}
                             <span class="badge-pending">Pending</span>
                         {% endif %}

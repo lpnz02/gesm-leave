@@ -11,7 +11,12 @@
         {% for team in hod_teams %}
         <h5 class="mt-3" style="color: var(--gesm-blue);">
             <i class="fas fa-chalkboard-teacher me-2"></i>
-            {{ team.hod.first_name }} {{ team.hod.last_name }} — {{ team.hod.department }}
+            <a href="{% url 'user_detail' team.hod.id %}"
+               class="text-decoration-none"
+               style="color: var(--gesm-blue);">
+                {{ team.hod.first_name }} {{ team.hod.last_name }}
+            </a>
+            — {{ team.hod.department }}
         </h5>
         <table class="table table-hover mb-4">
             <thead>
@@ -23,7 +28,13 @@
             <tbody>
                 {% for teacher in team.teachers %}
                 <tr>
-                    <td>{{ teacher.first_name }} {{ teacher.last_name }}</td>
+                    <td>
+                        <a href="{% url 'user_detail' teacher.id %}"
+                           class="text-decoration-none fw-bold"
+                           style="color: var(--gesm-blue);">
+                            {{ teacher.first_name }} {{ teacher.last_name }}
+                        </a>
+                    </td>
                     <td>{{ teacher.email }}</td>
                 </tr>
                 {% empty %}
@@ -59,7 +70,13 @@
             <tbody>
                 {% for leave in leaves %}
                 <tr>
-                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
+                    <td>
+                        <a href="{% url 'user_detail' leave.user.id %}"
+                           class="text-decoration-none fw-bold"
+                           style="color: var(--gesm-blue);">
+                            {{ leave.user.first_name }} {{ leave.user.last_name }}
+                        </a>
+                    </td>
                     <td>
                         {{ leave.leave_type }}
                         {% if leave.half_day != 'none' %}
@@ -76,6 +93,11 @@
                             <span class="badge-approved">Approved</span>
                         {% elif leave.status == 'rejected' %}
                             <span class="badge-rejected">Rejected</span>
+                            {% if leave.rejection_reason and leave.rejection_reason != 'None' %}
+                                <br><small class="text-danger">
+                                    <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                                </small>
+                            {% endif %}
                         {% else %}
                             <span class="badge-pending">Pending</span>
                         {% endif %}
@@ -110,6 +132,10 @@
                         <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
+                            <div class="mb-2">
+                                <textarea name="rejection_reason" class="form-control form-control-sm"
+                                    placeholder="Reason for rejection (optional)" rows="2"></textarea>
+                            </div>
                             <button type="submit" class="btn btn-danger btn-sm"
                                 onclick="return confirm('Reject this leave request?')">
                                 <i class="fas fa-times"></i> Reject

@@ -3,25 +3,22 @@
 {% block content %}
 <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Head of Department Dashboard</h2>
 
-<!-- Balance du HOD -->
+<!-- Leave Status du HOD -->
 <div class="card mb-4">
     <div class="card-header">
-        <i class="fas fa-calendar-check me-2"></i> My Leave Balance
+        <i class="fas fa-calendar-check me-2"></i> Leave Status
     </div>
     <div class="card-body">
-        <div class="row">
+        <div class="row g-3">
             {% for item in leave_summary %}
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <div class="p-3 rounded text-white mb-3"
-                     style="background: linear-gradient(135deg, #1a3a6b, #2a5298);">
+                     style="background: linear-gradient(135deg,
+                     {% if item.category == 'sick' %}#e74c3c, #c0392b{% else %}#1a3a6b, #2a5298{% endif %});">
                     <h6 class="fw-bold">{{ item.type }}</h6>
                     <div class="d-flex justify-content-between">
-                        <small>Used</small>
+                        <small>Absences</small>
                         <strong>{{ item.used }} days</strong>
-                    </div>
-                    <div class="d-flex justify-content-between">
-                        <small>Remaining</small>
-                        <strong>{{ item.remaining }} days</strong>
                     </div>
                     {% if item.unpaid %}
                     <div class="mt-1 text-warning fw-bold">⚠️ Unpaid Leave</div>
@@ -68,6 +65,11 @@
                             <span class="badge-approved">Approved</span>
                         {% elif leave.status == 'rejected' %}
                             <span class="badge-rejected">Rejected</span>
+                            {% if leave.rejection_reason %}
+                                <br><small class="text-danger">
+                                    <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                                </small>
+                            {% endif %}
                         {% elif leave.status == 'pending_hos' %}
                             <span class="badge-pending">Pending HOS</span>
                         {% else %}
@@ -101,7 +103,13 @@
             <tbody>
                 {% for sub in subordinates %}
                 <tr>
-                    <td>{{ sub.first_name }} {{ sub.last_name }}</td>
+                    <td>
+                        <a href="{% url 'user_detail' sub.id %}"
+                           class="text-decoration-none fw-bold"
+                           style="color: var(--gesm-blue);">
+                            {{ sub.first_name }} {{ sub.last_name }}
+                        </a>
+                    </td>
                     <td>{{ sub.email }}</td>
                 </tr>
                 {% empty %}
@@ -135,7 +143,13 @@
             <tbody>
                 {% for leave in leaves %}
                 <tr>
-                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
+                    <td>
+                        <a href="{% url 'user_detail' leave.user.id %}"
+                           class="text-decoration-none fw-bold"
+                           style="color: var(--gesm-blue);">
+                            {{ leave.user.first_name }} {{ leave.user.last_name }}
+                        </a>
+                    </td>
                     <td>
                         {{ leave.leave_type }}
                         {% if leave.half_day != 'none' %}
@@ -152,20 +166,42 @@
                             <span class="badge-approved">Approved</span>
                         {% elif leave.status == 'rejected' %}
                             <span class="badge-rejected">Rejected</span>
+                            {% if leave.rejection_reason and leave.rejection_reason != 'None' %}
+                                <br><small class="text-danger">
+                                    <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                                </small>
+                            {% endif %}
                         {% else %}
                             <span class="badge-pending">Pending</span>
                         {% endif %}
                     </td>
                     <td>
                         {% if leave.status == 'pending_hod' %}
+                        <div class="mb-2">
+                            <div class="form-check mb-1">
+                                <input class="form-check-input" type="checkbox"
+                                    id="unpaid_{{ leave.id }}"
+                                    onchange="document.getElementById('is_unpaid_approve_{{ leave.id }}').value = this.checked ? '1' : '0';
+                                              document.getElementById('is_unpaid_reject_{{ leave.id }}').value = this.checked ? '1' : '0';">
+                                <label class="form-check-label text-danger fw-bold" for="unpaid_{{ leave.id }}">
+                                    Mark as Unpaid
+                                </label>
+                            </div>
+                        </div>
                         <form method="post" action="{% url 'approve_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
+                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_approve_{{ leave.id }}">
                             <button type="submit" class="btn btn-success btn-sm">
                                 <i class="fas fa-check"></i> Approve
                             </button>
                         </form>
                         <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
+                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
+                            <div class="mb-2">
+                                <textarea name="rejection_reason" class="form-control form-control-sm"
+                                    placeholder="Reason for rejection (optional)" rows="2"></textarea>
+                            </div>
                             <button type="submit" class="btn btn-danger btn-sm"
                                 onclick="return confirm('Reject this leave request?')">
                                 <i class="fas fa-times"></i> Reject

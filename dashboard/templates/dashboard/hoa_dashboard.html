@@ -102,6 +102,10 @@
                         <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
                             {% csrf_token %}
                             <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
+                            <div class="mb-2">
+                                <textarea name="rejection_reason" class="form-control form-control-sm"
+                                    placeholder="Reason for rejection (optional)" rows="2"></textarea>
+                            </div>
                             <button type="submit" class="btn btn-danger btn-sm"
                                 onclick="return confirm('Reject this leave request?')">
                                 <i class="fas fa-times"></i> Reject
@@ -119,4 +123,4 @@
         </table>
     </div>
 </div>
-{% endblock %}
+{% endblock %}6
