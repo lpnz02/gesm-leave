@@ -190,51 +190,8 @@
         <i class="fas fa-sliders-h me-2"></i> Adjust Leave Balance
     </div>
     <div class="card-body">
-        <div class="row g-3 mb-3">
-            <div class="col-md-4">
-                <label class="form-label fw-bold">Staff Type</label>
-                <select class="form-select" id="staff-type-select" onchange="toggleBalanceForm()">
-                    <option value="">-- Select type --</option>
-                    <option value="teacher">Teacher / Head of Department</option>
-                    <option value="admin">Admin</option>
-                </select>
-            </div>
-        </div>
-
-        <!-- Profs/HOD : changer le total de jours -->
-        <div id="teacher-form" style="display:none;">
-            <form method="post" action="{% url 'adjust_balance' %}">
-                {% csrf_token %}
-                <input type="hidden" name="balance_type" value="teacher">
-                <div class="row g-3">
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Teacher / HOD</label>
-                        <select name="user_id" class="form-select">
-                            {% for u in all_users %}
-                                {% if u.role == 'teacher' or u.role == 'head_of_department' %}
-                                <option value="{{ u.id }}">
-                                    {{ u.first_name }} {{ u.last_name }} ({{ u.role }})
-                                </option>
-                                {% endif %}
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label fw-bold">Days Remaining to set</label>
-                        <input type="number" name="total_days" class="form-control"
-                            placeholder="Remaining days" step="0.5" min="0">
-                    </div>
-                    <div class="col-md-4 d-flex align-items-end">
-                        <button type="submit" class="btn btn-primary w-100">
-                            <i class="fas fa-save me-1"></i> Update
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-
         <!-- Admins : changer par catégorie -->
-        <div id="admin-form" style="display:none;">
+        <div id="admin-form">
             <form method="post" action="{% url 'adjust_balance' %}">
                 {% csrf_token %}
                 <input type="hidden" name="balance_type" value="admin">
@@ -277,7 +234,7 @@
         </div>
     </div>
 </div>
-
+      
 <div class="card mb-4" id="users-section">
     <div class="card-header">
         <i class="fas fa-users me-2"></i> All Users

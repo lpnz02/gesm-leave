@@ -4,123 +4,140 @@
 <h2 class="mb-4">Welcome {{ request.user.first_name }} to the Head of Administration Dashboard</h2>
 
 <div class="card mb-4">
-    <div class="card-header">
-        <i class="fas fa-users me-2"></i> Admins
-    </div>
-    <div class="card-body">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Email</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for emp in admins %}
-                <tr>
-                    <td>{{ emp.first_name }} {{ emp.last_name }}</td>
-                    <td>{{ emp.email }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="2" class="text-center text-muted">No admins yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+   <div class="card-header">
+       <i class="fas fa-users me-2"></i> Admins
+   </div>
+   <div class="card-body">
+       <table class="table table-hover">
+           <thead>
+               <tr>
+                   <th>Name</th>
+                   <th>Email</th>
+               </tr>
+           </thead>
+           <tbody>
+               {% for emp in admins %}
+               <tr>
+                   <td>
+                       <a href="{% url 'user_detail' emp.id %}"
+                          class="text-decoration-none fw-bold"
+                          style="color: var(--gesm-blue);">
+                           {{ emp.first_name }} {{ emp.last_name }}
+                       </a>
+                   </td>
+                   <td>{{ emp.email }}</td>
+               </tr>
+               {% empty %}
+               <tr>
+                   <td colspan="2" class="text-center text-muted">No admins yet.</td>
+               </tr>
+               {% endfor %}
+           </tbody>
+       </table>
+   </div>
 </div>
 
 <div class="card">
-    <div class="card-header">
-        <i class="fas fa-calendar-alt me-2"></i> Leave Requests
-    </div>
-    <div class="card-body">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>Admin</th>
-                    <th>Type</th>
-                    <th>Start</th>
-                    <th>Last Day</th>
-                    <th>Submitted</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for leave in leaves %}
-                <tr>
-                    <td>{{ leave.user.first_name }} {{ leave.user.last_name }}</td>
-                    <td>
-                        {{ leave.leave_type }}
-                        {% if leave.half_day != 'none' %}
-                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
-                        {% endif %}
-                    </td>
-                    <td>{{ leave.start_leave }}</td>
-                    <td>{{ leave.end_leave }}</td>
-                    <td>
-                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
-                    </td>
-                    <td>
-                        {% if leave.status == 'approved' %}
-                            <span class="badge-approved">Approved</span>
-                        {% elif leave.status == 'rejected' %}
-                            <span class="badge-rejected">Rejected</span>
-                        {% else %}
-                            <span class="badge-pending">Pending</span>
-                        {% endif %}
-                        {% if leave.is_unpaid %}
-                            <br><span class="badge"
-                                style="background-color:#dc3545; color:white; font-size:0.7rem;">
-                                Unpaid
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if leave.status == 'pending_hoa' %}
-                        <div class="mb-2">
-                            <div class="form-check mb-1">
-                                <input class="form-check-input" type="checkbox"
-                                    id="unpaid_{{ leave.id }}"
-                                    onchange="document.getElementById('is_unpaid_approve_{{ leave.id }}').value = this.checked ? '1' : '0';
-                                              document.getElementById('is_unpaid_reject_{{ leave.id }}').value = this.checked ? '1' : '0';">
-                                <label class="form-check-label text-danger fw-bold"
-                                    for="unpaid_{{ leave.id }}">
-                                    Mark as Unpaid
-                                </label>
-                            </div>
-                        </div>
-                        <form method="post" action="{% url 'approve_leave' leave.id %}" class="d-inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_approve_{{ leave.id }}">
-                            <button type="submit" class="btn btn-success btn-sm">
-                                <i class="fas fa-check"></i> Approve
-                            </button>
-                        </form>
-                        <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
-                            {% csrf_token %}
-                            <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
-                            <div class="mb-2">
-                                <textarea name="rejection_reason" class="form-control form-control-sm"
-                                    placeholder="Reason for rejection (optional)" rows="2"></textarea>
-                            </div>
-                            <button type="submit" class="btn btn-danger btn-sm"
-                                onclick="return confirm('Reject this leave request?')">
-                                <i class="fas fa-times"></i> Reject
-                            </button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="7" class="text-center text-muted">No leave requests yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+   <div class="card-header">
+       <i class="fas fa-calendar-alt me-2"></i> Leave Requests
+   </div>
+   <div class="card-body">
+       <table class="table table-hover">
+           <thead>
+               <tr>
+                   <th>Admin</th>
+                   <th>Type</th>
+                   <th>Start</th>
+                   <th>Last Day</th>
+                   <th>Submitted</th>
+                   <th>Status</th>
+                   <th>Actions</th>
+               </tr>
+           </thead>
+           <tbody>
+               {% for leave in leaves %}
+               <tr>
+                   <td>
+                       <a href="{% url 'user_detail' leave.user.id %}"
+                          class="text-decoration-none fw-bold"
+                          style="color: var(--gesm-blue);">
+                           {{ leave.user.first_name }} {{ leave.user.last_name }}
+                       </a>
+                   </td>
+                   <td>
+                       {{ leave.leave_type }}
+                       {% if leave.half_day != 'none' %}
+                           <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                       {% endif %}
+                   </td>
+                   <td>{{ leave.start_leave }}</td>
+                   <td>{{ leave.end_leave }}</td>
+                   <td>
+                       <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                   </td>
+                   <td>
+                       {% if leave.status == 'approved' %}
+                           <span class="badge-approved">Approved</span>
+                       {% elif leave.status == 'rejected' %}
+                           <span class="badge-rejected">Rejected</span>
+                           {% if leave.rejection_reason and leave.rejection_reason != 'None' %}
+                               <br><small class="text-danger">
+                                   <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                               </small>
+                           {% endif %}
+                       {% else %}
+                           <span class="badge-pending">Pending</span>
+                       {% endif %}
+                       {% if leave.is_unpaid %}
+                           <br><span class="badge"
+                               style="background-color:#dc3545; color:white; font-size:0.7rem;">
+                               Unpaid
+                           </span>
+                       {% endif %}
+                   </td>
+                   <td>
+                       {% if leave.status == 'pending_hoa' %}
+                       <div class="mb-2">
+                           <div class="form-check mb-1">
+                               <input class="form-check-input" type="checkbox"
+                                   id="unpaid_{{ leave.id }}"
+                                   onchange="document.getElementById('is_unpaid_approve_{{ leave.id }}').value = this.checked ? '1' : '0';
+                                             document.getElementById('is_unpaid_reject_{{ leave.id }}').value = this.checked ? '1' : '0';">
+                               <label class="form-check-label text-danger fw-bold"
+                                   for="unpaid_{{ leave.id }}">
+                                   Mark as Unpaid
+                               </label>
+                           </div>
+                       </div>
+                       <form method="post" action="{% url 'approve_leave' leave.id %}" class="d-inline">
+                           {% csrf_token %}
+                           <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_approve_{{ leave.id }}">
+                           <button type="submit" class="btn btn-success btn-sm">
+                               <i class="fas fa-check"></i> Approve
+                           </button>
+                       </form>
+                       <form method="post" action="{% url 'reject_leave' leave.id %}" class="d-inline">
+                           {% csrf_token %}
+                           <input type="hidden" name="is_unpaid" value="0" id="is_unpaid_reject_{{ leave.id }}">
+                           <div class="mb-2">
+                               <textarea name="rejection_reason" class="form-control form-control-sm"
+                                   placeholder="Reason for rejection (optional)" rows="2"></textarea>
+                           </div>
+                           <button type="submit" class="btn btn-danger btn-sm"
+                               onclick="return confirm('Reject this leave request?')">
+                               <i class="fas fa-times"></i> Reject
+                           </button>
+                       </form>
+                       {% endif %}
+                   </td>
+               </tr>
+               {% empty %}
+               <tr>
+                   <td colspan="7" class="text-center text-muted">No leave requests yet.</td>
+               </tr>
+               {% endfor %}
+           </tbody>
+       </table>
+   </div>
 </div>
-{% endblock %}6
+{% endblock %}

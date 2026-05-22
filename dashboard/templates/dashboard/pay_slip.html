@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class='mb-4'>Request Pay Slip</h2>
+<div class='card mb-4'>
+  <div class='card-header'>New Request</div>
+  <div class='card-body'>
+    <form method='post'>{% csrf_token %}
+      <div class='mb-3'>
+        <label class='form-label fw-bold'>Full Name</label>
+        <input name='full_name' class='form-control'
+          value='{{ request.user.first_name }} {{ request.user.last_name }}' required>
+      </div>
+      <div class='mb-3'>
+        <label class='form-label fw-bold'>Month(s)</label>
+        <input name='month' class='form-control'
+          placeholder='e.g. May 2026' required>
+      </div>
+      <button type='submit' class='btn btn-primary'>
+        <i class='fas fa-file-invoice me-1'></i> Send Request
+      </button>
+    </form>
+  </div>
+</div>
+<div class='card'>
+  <div class='card-header'>Request History</div>
+  <div class='card-body'>
+    <table class='table table-hover'>
+      <thead><tr>
+        <th>Name</th><th>Month</th><th>Sent</th>
+      </tr></thead>
+      <tbody>
+        {% for r in history %}
+        <tr>
+          <td>{{ r.full_name }}</td>
+          <td>{{ r.month }}</td>
+          <td><small class='text-muted'>{{ r.sent_at|date:'d/m/Y H:i' }}</small></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan='3' class='text-center text-muted'>No requests yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

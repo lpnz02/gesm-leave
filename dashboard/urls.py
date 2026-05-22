@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from dashboard.views import BackToWorkView, PaySlipView, CertificateView, HRFileLeaveView
 
 urlpatterns = [
     path('', views.DashboardView.as_view(), name='dashboard'),
@@ -22,4 +23,8 @@ urlpatterns = [
     path('departments/', views.DepartmentListView.as_view(), name='department_list'),
     path('departments/create/', views.DepartmentCreateView.as_view(), name='department_create'),
     path('departments/delete/<int:dept_id>/', views.DepartmentDeleteView.as_view(), name='department_delete'),
+    path('back-to-work/', BackToWorkView.as_view(), name='back_to_work'),
+    path('pay-slip/', PaySlipView.as_view(), name='pay_slip'),
+    path('certificate/', CertificateView.as_view(), name='certificate'),
+    path('hr-file-leave/', HRFileLeaveView.as_view(), name='hr_file_leave'),
 ]

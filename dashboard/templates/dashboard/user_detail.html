@@ -2,148 +2,155 @@
 
 {% block content %}
 <div class="d-flex align-items-center mb-4">
-    <a href="{% url 'dashboard' %}" class="btn btn-warning btn-sm me-3">
-        <i class="fas fa-arrow-left"></i> Back to Dashboard
-    </a>
-    <h2 class="mb-0">
-        <i class="fas fa-user me-2"></i>
-        {{ target_user.first_name }} {{ target_user.last_name }} — {{ target_user.role }}
-    </h2>
+   <a href="{% url 'dashboard' %}" class="btn btn-warning btn-sm me-3">
+       <i class="fas fa-arrow-left"></i> Back to Dashboard
+   </a>
+   <h2 class="mb-0">
+       <i class="fas fa-user me-2"></i>
+       {{ target_user.first_name }} {{ target_user.last_name }} — {{ target_user.role }}
+   </h2>
 </div>
 
 <div class="row mb-4">
-    <div class="col-md-4">
-        <div class="stat-card yellow">
-            <i class="fas fa-calendar-check fa-2x mb-2"></i>
-            <h2>{{ total_days_used }}</h2>
-            <p class="mb-0">Total Days Used</p>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-card">
-            <i class="fas fa-envelope fa-2x mb-2"></i>
-            <p class="mb-0">{{ target_user.email }}</p>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="stat-card">
-            <i class="fas fa-sitemap fa-2x mb-2"></i>
-            <p class="mb-0">{{ target_user.department }}</p>
-        </div>
-    </div>
+   <div class="col-md-4">
+       <div class="stat-card yellow">
+           <i class="fas fa-calendar-check fa-2x mb-2"></i>
+           <h2>{{ total_days_used }}</h2>
+           <p class="mb-0">Total Days Used</p>
+       </div>
+   </div>
+   <div class="col-md-4">
+       <div class="stat-card">
+           <i class="fas fa-envelope fa-2x mb-2"></i>
+           <p class="mb-0">{{ target_user.email }}</p>
+       </div>
+   </div>
+   <div class="col-md-4">
+       <div class="stat-card">
+           <i class="fas fa-sitemap fa-2x mb-2"></i>
+           <p class="mb-0">{{ target_user.department }}</p>
+       </div>
+   </div>
 </div>
 
+{% if leave_summary %}
 <div class="card mb-4">
-    <div class="card-header">
-        <i class="fas fa-chart-bar me-2"></i>
-        {% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}
-            Leave Status
-        {% else %}
-            Leave Balance
-        {% endif %}
-    </div>
-    <div class="card-body">
-        <div class="row g-3">
-            {% for item in leave_summary %}
-            <div class="col-md-6">
-                <div class="p-3 rounded text-white"
-                    style="background: linear-gradient(135deg,
-                    {% if item.category == 'sick' %}#e74c3c, #c0392b
-                    {% elif item.category == 'special' %}#1a3a6b, #2a5298
-                    {% else %}#e67e22, #d35400{% endif %});">
-                    <h6 class="fw-bold mb-2">{{ item.type }}</h6>
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <small>{% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}Absences{% else %}Used{% endif %}</small>
-                        <strong>{{ item.used }} days</strong>
-                    </div>
-                    {% if target_user.role != 'teacher' and target_user.role != 'head_of_department' %}
-                        {% if item.remaining is not None %}
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <small>Remaining</small>
-                            <strong>{{ item.remaining }} days</strong>
-                        </div>
-                        {% if item.carried_over > 0 %}
-                        <div class="d-flex justify-content-between align-items-center mb-1"
-                            style="opacity:0.85; border-top:1px solid rgba(255,255,255,0.3); padding-top:4px; margin-top:4px;">
-                            <small>↳ Unused from previous year</small>
-                            <strong>+{{ item.carried_over }} days</strong>
-                        </div>
-                        {% endif %}
-                        {% else %}
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                            <small>No limit set — contact HR</small>
-                        </div>
-                        {% endif %}
-                    {% endif %}
-                    {% if item.unpaid %}
-                    <div class="mt-2 text-center fw-bold" style="color:#ffeb3b;">
-                        ⚠️ Unpaid Leave
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
+   <div class="card-header">
+       <i class="fas fa-chart-bar me-2"></i>
+       {% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}
+           Leave Status
+       {% else %}
+           Leave Balance
+       {% endif %}
+   </div>
+   <div class="card-body">
+       <div class="row g-3">
+           {% for item in leave_summary %}
+           <div class="{% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}col-md-6{% else %}col-md-4{% endif %}">
+               <div class="p-3 rounded text-white"
+                   style="background: linear-gradient(135deg,
+                   {% if item.category == 'sick' %}#e74c3c, #c0392b
+                   {% elif item.category == 'special' %}#1a3a6b, #2a5298
+                   {% elif forloop.counter == 1 %}#1a3a6b, #2a5298
+                   {% elif forloop.counter == 2 %}#e67e22, #d35400
+                   {% elif forloop.counter == 3 %}#2ecc71, #27ae60
+                   {% elif forloop.counter == 4 %}#9b59b6, #8e44ad
+                   {% elif forloop.counter == 5 %}#e74c3c, #c0392b
+                   {% else %}#1abc9c, #16a085{% endif %});">
+                   <h6 class="fw-bold mb-2">{{ item.type }}</h6>
+                   <div class="d-flex justify-content-between align-items-center mb-1">
+                       <small>{% if target_user.role == 'teacher' or target_user.role == 'head_of_department' %}Absences{% else %}Used{% endif %}</small>
+                       <strong>{{ item.used }} days</strong>
+                   </div>
+                   {% if target_user.role != 'teacher' and target_user.role != 'head_of_department' %}
+                       {% if item.remaining is not None %}
+                       <div class="d-flex justify-content-between align-items-center mb-1">
+                           <small>Remaining</small>
+                           <strong>{{ item.remaining }} days</strong>
+                       </div>
+                       {% if item.carried_over > 0 %}
+                       <div class="d-flex justify-content-between align-items-center mb-1"
+                           style="opacity:0.85; border-top:1px solid rgba(255,255,255,0.3); padding-top:4px; margin-top:4px;">
+                           <small>↳ Unused from previous year</small>
+                           <strong>+{{ item.carried_over }} days</strong>
+                       </div>
+                       {% endif %}
+                       {% else %}
+                       <div class="d-flex justify-content-between align-items-center mb-1">
+                           <small>No limit set — contact HR</small>
+                       </div>
+                       {% endif %}
+                   {% endif %}
+                   {% if item.unpaid %}
+                   <div class="mt-2 text-center fw-bold" style="color:#ffeb3b;">
+                       ⚠️ Unpaid Leave
+                   </div>
+                   {% endif %}
+               </div>
+           </div>
+           {% endfor %}
+       </div>
+   </div>
 </div>
+{% endif %}
 
 <div class="card">
-    <div class="card-header">
-        <i class="fas fa-list me-2"></i> Leave Requests History
-    </div>
-    <div class="card-body">
-        <table class="table table-hover">
-            <thead>
-                <tr>
-                    <th>Type</th>
-                    <th>Start</th>
-                    <th>Last Day</th>
-                    <th>Status</th>
-                    <th>Submitted</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for leave in leaves %}
-                <tr>
-                    <td>
-                        {{ leave.leave_type }}
-                        {% if leave.half_day != 'none' %}
-                            <br><small class="text-muted">{{ leave.half_day|title }} only</small>
-                        {% endif %}
-                    </td>
-                    <td>{{ leave.start_leave }}</td>
-                    <td>{{ leave.end_leave }}</td>
-                    <td>
-                        {% if leave.status == 'approved' %}
-                            <span class="badge-approved">Approved</span>
-                        {% elif leave.status == 'rejected' %}
-                            <span class="badge-rejected">Rejected</span>
-                            {% if leave.rejection_reason %}
-                                <br><small class="text-danger">
-                                    <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
-                                </small>
-                            {% endif %}
-                        {% else %}
-                            <span class="badge-pending">Pending</span>
-                        {% endif %}
-                        {% if leave.is_unpaid %}
-                            <br><span class="badge"
-                                style="background-color:#dc3545; color:white; font-size:0.7rem;">
-                                Unpaid
-                            </span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
-                    </td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+   <div class="card-header">
+       <i class="fas fa-list me-2"></i> Leave Requests History
+   </div>
+   <div class="card-body">
+       <table class="table table-hover">
+           <thead>
+               <tr>
+                   <th>Type</th>
+                   <th>Start</th>
+                   <th>Last Day</th>
+                   <th>Status</th>
+                   <th>Submitted</th>
+               </tr>
+           </thead>
+           <tbody>
+               {% for leave in leaves %}
+               <tr>
+                   <td>
+                       {{ leave.leave_type }}
+                       {% if leave.half_day != 'none' %}
+                           <br><small class="text-muted">{{ leave.half_day|title }} only</small>
+                       {% endif %}
+                   </td>
+                   <td>{{ leave.start_leave }}</td>
+                   <td>{{ leave.end_leave }}</td>
+                   <td>
+                       {% if leave.status == 'approved' %}
+                           <span class="badge-approved">Approved</span>
+                       {% elif leave.status == 'rejected' %}
+                           <span class="badge-rejected">Rejected</span>
+                           {% if leave.rejection_reason and leave.rejection_reason != 'None' %}
+                               <br><small class="text-danger">
+                                   <i class="fas fa-info-circle me-1"></i>{{ leave.rejection_reason }}
+                               </small>
+                           {% endif %}
+                       {% else %}
+                           <span class="badge-pending">Pending</span>
+                       {% endif %}
+                       {% if leave.is_unpaid %}
+                           <br><span class="badge"
+                               style="background-color:#dc3545; color:white; font-size:0.7rem;">
+                               Unpaid
+                           </span>
+                       {% endif %}
+                   </td>
+                   <td>
+                       <small class="text-muted">{{ leave.created_at|date:"d/m/Y H:i" }}</small>
+                   </td>
+               </tr>
+               {% empty %}
+               <tr>
+                   <td colspan="5" class="text-center text-muted">No leave requests yet.</td>
+               </tr>
+               {% endfor %}
+           </tbody>
+       </table>
+   </div>
 </div>
 {% endblock %}

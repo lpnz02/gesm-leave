@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class='mb-4'>Request Certificate of Employment</h2>
+<div class='card mb-4'>
+  <div class='card-header'>New Request</div>
+  <div class='card-body'>
+    <form method='post'>{% csrf_token %}
+      <div class='mb-3'>
+        <label class='form-label fw-bold'>Full Name</label>
+        <input name='full_name' class='form-control'
+          value='{{ request.user.first_name }} {{ request.user.last_name }}' required>
+      </div>
+      <div class='mb-3'>
+        <label class='form-label fw-bold'>Purpose</label>
+        <textarea name='purpose' class='form-control' rows='3'
+          placeholder='...' required></textarea>
+      </div>
+      <div class='mb-3 form-check'>
+        <input type='checkbox' class='form-check-input' name='with_salary' id='with_salary'>
+        <label class='form-check-label' for='with_salary'>
+          Include salary details
+        </label>
+      </div>
+      <button type='submit' class='btn btn-primary'>
+        <i class='fas fa-certificate me-1'></i> Send Request to HR
+      </button>
+    </form>
+  </div>
+</div>
+<div class='card'>
+  <div class='card-header'>Request History</div>
+  <div class='card-body'>
+    <table class='table table-hover'>
+      <thead><tr>
+        <th>Name</th><th>Purpose</th><th>With Salary</th><th>Sent</th>
+      </tr></thead>
+      <tbody>
+        {% for r in history %}
+        <tr>
+          <td>{{ r.full_name }}</td>
+          <td>{{ r.purpose }}</td>
+          <td>{% if r.with_salary %}Yes{% else %}No{% endif %}</td>
+<td><small class='text-muted'>{{ r.sent_at|date:'d/m/Y H:i' }}</small></td>
+</tr>
+{% empty %}
+<tr><td colspan='4' class='text-center text-muted'>No requests yet.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+{% endblock %}

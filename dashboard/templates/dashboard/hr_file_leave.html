@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2 class='mb-4'>File a Leave on Behalf of an Employee</h2>
+<div class='card mb-4'>
+  <div class='card-header'>
+    <i class='fas fa-user-edit me-2'></i> Direct Leave Filing
+    <span class='badge bg-warning text-dark ms-2'>Auto-Approved</span>
+  </div>
+  <div class='card-body'>
+    <div class='alert alert-warning'>
+      <i class='fas fa-exclamation-triangle me-2'></i>
+      This leave will be <strong>automatically approved</strong>.
+      Use only when the employee cannot file themselves (e.g. hospitalization).
+    </div>
+    <form method='post'>{% csrf_token %}
+      <div class='row g-3'>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Employee</label>
+          <select name='user_id' class='form-select' required>
+            <option value=''>-- Select employee --</option>
+            {% for u in all_users %}
+            <option value='{{ u.id }}'>
+              {{ u.first_name }} {{ u.last_name }} ({{ u.role }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Leave Type</label>
+          <select name='leave_type' class='form-select' required>
+            {% for val, label in leave_types %}
+            <option value='{{ val }}'>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Half Day</label>
+          <select name='half_day' class='form-select'>
+            <option value='none'>Full Day(s)</option>
+            <option value='morning'>Morning only</option>
+            <option value='afternoon'>Afternoon only</option>
+          </select>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Start Date</label>
+          <input type='date' name='start_leave' class='form-control' required>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Last Day of Leave</label>
+          <input type='date' name='end_leave' class='form-control' required>
+        </div>
+        <div class='col-md-4'>
+          <label class='form-label fw-bold'>Reason</label>
+          <input name='reason_for_leave' class='form-control'
+            placeholder='e.g. Hospitalization' value='Filed by HR'>
+        </div>
+        <div class='col-md-12'>
+          <div class='form-check'>
+            <input class='form-check-input' type='checkbox' name='is_unpaid' id='is_unpaid'>
+            <label class='form-check-label text-danger fw-bold' for='is_unpaid'>
+              Mark as Unpaid Leave
+            </label>
+          </div>
+        </div>
+        <div class='col-md-12'>
+          <button type='submit' class='btn btn-warning'
+            onclick="return confirm('File this leave as automatically approved?')">
+            <i class='fas fa-check-circle me-1'></i> File & Approve Leave
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
