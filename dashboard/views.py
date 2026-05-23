@@ -16,212 +16,253 @@ from django.utils import timezone
 from django.contrib import messages
 from .models import PaySlipRequest
 
-
 class DashboardView(LoginRequiredMixin, View):
-   def get(self, request):
-       user = request.user
+    def get(self, request):
+        user = request.user
 
-       if user.role == 'teacher':
-           leaves = Leave.objects.filter(user=user)
+        if user.role == 'teacher':
+            leaves = Leave.objects.filter(user=user)
 
-           sick_used = 0
-           special_used = 0
-           SICK_TYPES = ['sick_leave']
+            sick_used = 0
+            special_used = 0
+            SICK_TYPES = ['sick_leave']
 
-           for leave in leaves.filter(status='approved'):
-               if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                   days = 0.5
-               else:
-                   days = 0
-                   current = leave.start_leave
-                   while current <= leave.end_leave:
-                       if current.weekday() < 5:
-                           days += 1
-                       current += timedelta(days=1)
+            balance = LeaveBalance.objects.filter(
+                user=user,
+                leave_type='vacation_leave'
+            ).first()
+            total = float(balance.total_days) if balance else 30
+            remaining = float(balance.days_remaining) if balance else 30
 
-               if leave.leave_type in SICK_TYPES:
-                   sick_used += days
-               else:
-                   special_used += days
+            for leave in leaves.filter(status='approved'):
+                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                    days = 0.5
+                else:
+                    days = 0
+                    current = leave.start_leave
+                    while current <= leave.end_leave:
+                        if current.weekday() < 5:
+                            days += 1
+                        current += timedelta(days=1)
 
-           days_used = sick_used + special_used
+                if leave.leave_type in SICK_TYPES:
+                    sick_used += days
+                else:
+                    special_used += days
 
-           leave_summary = [
-               {'type': 'Sick Leave', 'used': sick_used, 'category': 'sick'},
-               {'type': 'Special Leave', 'used': special_used, 'category': 'special'},
-           ]
+            days_used = sick_used + special_used
 
-           return render(request, 'dashboard/employee_dashboard.html', {
-               'leaves': leaves,
-               'total_days_used': days_used,
-               'leave_summary': leave_summary,
-               'user_role': user.role,
-           })
+            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
+            real_unpaid = max(0, days_used - total)
+            # Répartit l'unpaid : d'abord sur special, puis sur sick
+            if real_unpaid > 0:
+                special_unpaid = min(real_unpaid, special_used)
+                sick_unpaid = max(0, real_unpaid - special_unpaid)
+            else:
+                sick_unpaid = 0
+                special_unpaid = 0
 
-       elif user.role == 'admin':
-           leaves = Leave.objects.filter(user=user)
-           balances = LeaveBalance.objects.filter(user=user)
-           leave_summary = []
-           total_days_used = 0
+            leave_summary = [
+                {'type': 'Sick Leave', 'used': sick_used, 'unpaid': sick_unpaid, 'category': 'sick'},
+                {'type': 'Special Leave', 'used': special_used, 'unpaid': special_unpaid, 'category': 'special'},
+            ]
 
-           NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
+            # Calcul total jours unpaid pour affichage alerte
+            total_unpaid = real_unpaid
 
-           for balance in balances:
-               days_used = 0
-               for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
-                   if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                       days_used += 0.5
-                   else:
-                       current = leave.start_leave
-                       while current <= leave.end_leave:
-                           if current.weekday() < 5:
-                               days_used += 1
-                           current += timedelta(days=1)
+            return render(request, 'dashboard/employee_dashboard.html', {
+                'leaves': leaves,
+                'total_days_used': days_used,
+                'leave_summary': leave_summary,
+                'user_role': user.role,
+                'total_unpaid': total_unpaid,
+            })
 
-               total_days_used += days_used
-               no_limit = balance.total_days == 0 or balance.leave_type in NO_LIMIT_TYPES
+        elif user.role == 'admin':
+            leaves = Leave.objects.filter(user=user)
+            balances = LeaveBalance.objects.filter(user=user)
+            leave_summary = []
+            total_days_used = 0
 
-               leave_summary.append({
-                   'type': balance.leave_type.replace('_', ' ').title(),
-                   'used': days_used,
-                   'total': None if no_limit else balance.total_days,
-                   'remaining': None if no_limit else balance.days_remaining,
-                   'carried_over': balance.carried_over,
-                   'unpaid': False if no_limit else balance.days_remaining < 0,
-                   'category': None,
-               })
+            NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
 
-           return render(request, 'dashboard/employee_dashboard.html', {
-               'leaves': leaves,
-               'total_days_used': total_days_used,
-               'leave_summary': leave_summary,
-               'user_role': user.role,
-           })
+            for balance in balances:
+                days_used = 0
+                for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
+                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                        days_used += 0.5
+                    else:
+                        current = leave.start_leave
+                        while current <= leave.end_leave:
+                            if current.weekday() < 5:
+                                days_used += 1
+                            current += timedelta(days=1)
 
-       elif user.role == 'head_of_department':
-           dept = user.department
-           if dept:
-               subordinates = User.objects.filter(department=dept, role='teacher')
-           else:
-               subordinates = User.objects.filter(superior=user, role='teacher')
+                total_days_used += days_used
+                no_limit = balance.total_days == 0 or balance.leave_type in NO_LIMIT_TYPES
 
-           teacher_leaves = Leave.objects.filter(user__in=subordinates)
-           own_leaves = Leave.objects.filter(user=user)
+                leave_summary.append({
+                    'type': balance.leave_type.replace('_', ' ').title(),
+                    'used': days_used,
+                    'total': None if no_limit else balance.total_days,
+                    'remaining': None if no_limit else balance.days_remaining,
+                    'carried_over': balance.carried_over,
+                    'unpaid': False if no_limit else balance.days_remaining < 0,
+                    'category': None,
+                })
 
-           sick_used = 0
-           special_used = 0
-           SICK_TYPES = ['sick_leave']
+            return render(request, 'dashboard/employee_dashboard.html', {
+                'leaves': leaves,
+                'total_days_used': total_days_used,
+                'leave_summary': leave_summary,
+                'user_role': user.role,
+            })
 
-           for leave in own_leaves.filter(status='approved'):
-               if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                   days = 0.5
-               else:
-                   days = 0
-                   current = leave.start_leave
-                   while current <= leave.end_leave:
-                       if current.weekday() < 5:
-                           days += 1
-                       current += timedelta(days=1)
+        elif user.role == 'head_of_department':
+            dept = user.department
+            if dept:
+                subordinates = User.objects.filter(department=dept, role='teacher')
+            else:
+                subordinates = User.objects.filter(superior=user, role='teacher')
 
-               if leave.leave_type in SICK_TYPES:
-                   sick_used += days
-               else:
-                   special_used += days
+            teacher_leaves = Leave.objects.filter(user__in=subordinates)
+            own_leaves = Leave.objects.filter(user=user)
 
-           days_used = sick_used + special_used
+            sick_used = 0
+            special_used = 0
+            SICK_TYPES = ['sick_leave']
 
-           leave_summary = [
-               {'type': 'Sick Leave', 'used': sick_used, 'category': 'sick'},
-               {'type': 'Special Leave', 'used': special_used, 'category': 'special'},
-           ]
+            balance = LeaveBalance.objects.filter(
+                user=user,
+                leave_type='vacation_leave'
+            ).first()
+            total = float(balance.total_days) if balance else 30
+            remaining = float(balance.days_remaining) if balance else 30
 
-           return render(request, 'dashboard/hod_dashboard.html', {
-               'subordinates': subordinates,
-               'leaves': teacher_leaves,
-               'own_leaves': own_leaves,
-               'leave_summary': leave_summary,
-               'total_days_used': days_used,
-               'user_role': user.role,
-           })
+            for leave in own_leaves.filter(status='approved'):
+                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                    days = 0.5
+                else:
+                    days = 0
+                    current = leave.start_leave
+                    while current <= leave.end_leave:
+                        if current.weekday() < 5:
+                            days += 1
+                        current += timedelta(days=1)
 
-       elif user.role == 'head_of_school':
-           hods = User.objects.filter(role='head_of_department')
-           hod_teams = []
-           for hod in hods:
-               dept = hod.department
-               if dept:
-                   hod_teachers = User.objects.filter(department=dept, role='teacher')
-               else:
-                   hod_teachers = User.objects.filter(superior=hod, role='teacher')
-               hod_teams.append({
-                   'hod': hod,
-                   'teachers': hod_teachers,
-               })
+                if leave.leave_type in SICK_TYPES:
+                    sick_used += days
+                else:
+                    special_used += days
 
-           leaves = Leave.objects.filter(
-               user__role__in=['teacher', 'head_of_department'],
-               status='pending_hos'
-           ) | Leave.objects.filter(
-               user__role__in=['teacher', 'head_of_department'],
-               status__in=['approved', 'rejected']
-           )
+            days_used = sick_used + special_used
 
-           return render(request, 'dashboard/hos_dashboard.html', {
-               'hod_teams': hod_teams,
-               'leaves': leaves,
-           })
+            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
+            real_unpaid = max(0, days_used - total)
+            # Répartit l'unpaid : d'abord sur special, puis sur sick
+            if real_unpaid > 0:
+                special_unpaid = min(real_unpaid, special_used)
+                sick_unpaid = max(0, real_unpaid - special_unpaid)
+            else:
+                sick_unpaid = 0
+                special_unpaid = 0
 
-       elif user.role == 'head_of_admin':
-           admins = User.objects.filter(role__in=['admin', 'hr'])
-           leaves = Leave.objects.filter(user__in=admins)
-           return render(request, 'dashboard/hoa_dashboard.html', {
-               'admins': admins,
-               'leaves': leaves,
-           })
+            leave_summary = [
+                {'type': 'Sick Leave', 'used': sick_used, 'unpaid': sick_unpaid, 'category': 'sick'},
+                {'type': 'Special Leave', 'used': special_used, 'unpaid': special_unpaid, 'category': 'special'},
+            ]
 
-       elif user.role == 'hr':
-           from accounts.models import Department
-           from django.utils import timezone as tz
+            # Calcul total jours unpaid pour affichage alerte
+            total_unpaid = real_unpaid
 
-           all_leaves = Leave.objects.filter(user__isnull=False).exclude(user__role='head_of_admin')
-           all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
-           pending_users = User.objects.filter(is_active=False, is_email_verified=True)
+            return render(request, 'dashboard/hod_dashboard.html', {
+                'subordinates': subordinates,
+                'leaves': teacher_leaves,
+                'own_leaves': own_leaves,
+                'leave_summary': leave_summary,
+                'total_days_used': days_used,
+                'user_role': user.role,
+                'total_unpaid': total_unpaid,
+            })
 
-           hods_no_dept = User.objects.filter(role='head_of_department', department=None)
-           teachers_no_superior = User.objects.filter(role='teacher', superior=None)
-           no_hos = not User.objects.filter(role='head_of_school', is_active=True).exists()
-           no_hoa = not User.objects.filter(role='head_of_admin', is_active=True).exists()
-           stale_leaves = Leave.objects.filter(
-               user__isnull=False,
-               status__in=['pending_hod', 'pending_hos', 'pending_hoa'],
-               created_at__lt=tz.now() - timedelta(days=7)
-           )
+        elif user.role == 'head_of_school':
+            hods = User.objects.filter(role='head_of_department')
+            hod_teams = []
+            for hod in hods:
+                dept = hod.department
+                if dept:
+                    hod_teachers = User.objects.filter(department=dept, role='teacher')
+                else:
+                    hod_teachers = User.objects.filter(superior=hod, role='teacher')
+                hod_teams.append({
+                    'hod': hod,
+                    'teachers': hod_teachers,
+                })
 
-           return render(request, 'dashboard/hr_dashboard.html', {
-               'all_leaves': all_leaves,
-               'all_users': all_users,
-               'pending_users': pending_users,
-               'today': date.today(),
-               'hods_no_dept': hods_no_dept,
-               'teachers_no_superior': teachers_no_superior,
-               'no_hos': no_hos,
-               'no_hoa': no_hoa,
-               'stale_leaves': stale_leaves,
-           })
+            leaves = Leave.objects.filter(
+                user__role__in=['teacher', 'head_of_department'],
+                status='pending_hos'
+            ) | Leave.objects.filter(
+                user__role__in=['teacher', 'head_of_department'],
+                status__in=['approved', 'rejected']
+            )
 
-       elif user.role == 'scheduling_team':
-           return render(request, 'dashboard/scheduling_dashboard.html', {})
+            return render(request, 'dashboard/hos_dashboard.html', {
+                'hod_teams': hod_teams,
+                'leaves': leaves,
+            })
 
-       elif user.role == 'calendar_access':
-           return render(request, 'dashboard/scheduling_dashboard.html', {
-               'user_role': 'calendar_access'
-           })
+        elif user.role == 'head_of_admin':
+            admins = User.objects.filter(role__in=['admin', 'hr'])
+            leaves = Leave.objects.filter(user__in=admins)
+            return render(request, 'dashboard/hoa_dashboard.html', {
+                'admins': admins,
+                'leaves': leaves,
+            })
 
-       else:
-           return render(request, 'dashboard/employee_dashboard.html', {
-               'leaves': [],
-               'total_days_used': 0,
-           })
+        elif user.role == 'hr':
+            from accounts.models import Department
+            from django.utils import timezone as tz
+
+            all_leaves = Leave.objects.filter(user__isnull=False).exclude(user__role='head_of_admin')
+            all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
+            pending_users = User.objects.filter(is_active=False, is_email_verified=True)
+
+            hods_no_dept = User.objects.filter(role='head_of_department', department=None)
+            teachers_no_superior = User.objects.filter(role='teacher', superior=None)
+            no_hos = not User.objects.filter(role='head_of_school', is_active=True).exists()
+            no_hoa = not User.objects.filter(role='head_of_admin', is_active=True).exists()
+            stale_leaves = Leave.objects.filter(
+                user__isnull=False,
+                status__in=['pending_hod', 'pending_hos', 'pending_hoa'],
+                created_at__lt=tz.now() - timedelta(days=7)
+            )
+
+            return render(request, 'dashboard/hr_dashboard.html', {
+                'all_leaves': all_leaves,
+                'all_users': all_users,
+                'pending_users': pending_users,
+                'today': date.today(),
+                'hods_no_dept': hods_no_dept,
+                'teachers_no_superior': teachers_no_superior,
+                'no_hos': no_hos,
+                'no_hoa': no_hoa,
+                'stale_leaves': stale_leaves,
+            })
+
+        elif user.role == 'scheduling_team':
+            return render(request, 'dashboard/scheduling_dashboard.html', {})
+
+        elif user.role == 'calendar_access':
+            return render(request, 'dashboard/scheduling_dashboard.html', {
+                'user_role': 'calendar_access'
+            })
+
+        else:
+            return render(request, 'dashboard/employee_dashboard.html', {
+                'leaves': [],
+                'total_days_used': 0,
+            })
         
 class AdjustBalanceView(LoginRequiredMixin, View):
     def post(self, request):
@@ -233,15 +274,26 @@ class AdjustBalanceView(LoginRequiredMixin, View):
         user = User.objects.get(id=user_id)
 
         if balance_type == 'teacher':
-            # HR définit le nombre de jours RESTANTS directement
-            days_remaining = float(request.POST.get('total_days', 30))
+            days_remaining = float(request.POST.get('days_remaining', 30))
             balance = LeaveBalance.objects.filter(
                 user=user, leave_type='vacation_leave'
             ).first()
             if balance:
+                # HR définit les jours restants
+                # total = used + nouveau remaining
                 balance.days_remaining = days_remaining
-                balance.total_days = days_remaining + float(balance.days_used)
+                balance.total_days = float(balance.days_used) + days_remaining
                 balance.save()
+            else:
+                # Crée la balance si elle n'existe pas
+                LeaveBalance.objects.create(
+                    user=user,
+                    leave_type='vacation_leave',
+                    total_days=days_remaining,
+                    days_used=0,
+                    days_remaining=days_remaining,
+                    carried_over=0,
+                )
 
         elif balance_type == 'admin':
             leave_type = request.POST.get('leave_type')
@@ -259,7 +311,37 @@ class AdjustBalanceView(LoginRequiredMixin, View):
 
         return redirect('dashboard')
 
+    def _update_balance(self, leave):
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+            count = 0.5
+        else:
+            count = 0
+            current = leave.start_leave
+            while current <= leave.end_leave:
+                if current.weekday() < 5:
+                    count += 1
+                current += timedelta(days=1)
 
+        # Pour les profs et HOD → toujours vacation_leave
+        if leave.user.role in ['teacher', 'head_of_department']:
+            leave_type = 'vacation_leave'
+        else:
+            leave_type = leave.leave_type
+
+        balance, created = LeaveBalance.objects.get_or_create(
+            user=leave.user,
+            leave_type=leave_type,
+            defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
+        )
+        balance.days_used = float(balance.days_used) + count
+        balance.days_remaining = float(balance.days_remaining) - count
+        balance.save()
+
+        # Auto-unpaid : marque CE leave comme unpaid s'il fait dépasser le total
+        if leave.user.role in ['teacher', 'head_of_department']:
+            if balance.days_remaining < 0 and not leave.is_unpaid:
+                leave.is_unpaid = True
+                leave.save()
 
 class CreateAdminUserView(LoginRequiredMixin, View):
     def get(self, request):
@@ -382,6 +464,28 @@ class CalendarView(LoginRequiredMixin, View):
         from itertools import chain
         all_leaves = list(chain(leaves_approved, leaves_pending_sick))
 
+        # Précalcul des totaux utilisés par user (pour unpaid_info)
+        user_totals = {}
+        user_balance_totals = {}
+        for leave in all_leaves:
+            uid = leave.user.id
+            if uid not in user_totals:
+                user_totals[uid] = 0
+                b = LeaveBalance.objects.filter(
+                    user=leave.user,
+                    leave_type='vacation_leave'
+                ).first()
+                user_balance_totals[uid] = float(b.total_days) if b else 30
+                for l in Leave.objects.filter(user=leave.user, status='approved'):
+                    if l.half_day in ['morning', 'afternoon'] and l.start_leave == l.end_leave:
+                        user_totals[uid] += 0.5
+                    else:
+                        cur = l.start_leave
+                        while cur <= l.end_leave:
+                            if cur.weekday() < 5:
+                                user_totals[uid] += 1
+                            cur += timedelta(days=1)
+
         cal_matrix = cal.monthcalendar(year, month)
         calendar_data = []
         for week in cal_matrix:
@@ -396,17 +500,34 @@ class CalendarView(LoginRequiredMixin, View):
                     if not is_weekend:
                         for leave in all_leaves:
                             if leave.start_leave <= current_date <= leave.end_leave:
+                                # Couleur basée sur is_unpaid du leave (pas sur le total global)
                                 if leave.status != 'approved':
-                                    color = '#adb5bd'
-                                elif leave.is_unpaid and user.role != 'scheduling_team':
-                                    color = '#dc3545'
+                                    color = '#adb5bd'  # gris = pending sick
+                                elif user.role == 'scheduling_team':
+                                    color = '#1a3a6b'  # scheduling voit tout en bleu
+                                elif leave.is_unpaid:
+                                    color = '#dc3545'  # rouge = unpaid (marqué par HOD ou auto)
                                 else:
-                                    color = '#1a3a6b'
+                                    color = '#1a3a6b'  # bleu = paid
+
+                                # Info unpaid dans le nom : affiche seulement le nb de jours en trop
+                                unpaid_info = ''
+                                if (user.role != 'scheduling_team'
+                                        and leave.status == 'approved'
+                                        and leave.is_unpaid
+                                        and leave.user.role in ['teacher', 'head_of_department']):
+                                    uid = leave.user.id
+                                    total_used = user_totals.get(uid, 0)
+                                    balance_total = user_balance_totals.get(uid, 30)
+                                    over = max(0, total_used - balance_total)
+                                    if over > 0:
+                                        unpaid_info = f' ({over:.0f}d unpaid)'
 
                                 absents.append({
                                     'name': (
                                         f"{leave.user.first_name} {leave.user.last_name}"
                                         + (" (AM)" if leave.half_day == 'morning' else " (PM)" if leave.half_day == 'afternoon' else "")
+                                        + unpaid_info
                                         + (" (pending)" if leave.status != 'approved' else "")
                                     ),
                                     'color': color,
@@ -562,10 +683,21 @@ class UserDetailView(LoginRequiredMixin, View):
         leave_summary = []
         total_days_used = 0
         SICK_TYPES = ['sick_leave']
+        NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
 
         if target_user.role in ['teacher', 'head_of_department']:
             sick_used = 0
             special_used = 0
+
+            balance = LeaveBalance.objects.filter(
+                user=target_user,
+                leave_type='vacation_leave'
+            ).first()
+            total = float(balance.total_days) if balance else 30
+            remaining = float(balance.days_remaining) if balance else 30
+            # On lit directement depuis la DB car :
+            # - _update_balance soustrait à chaque approbation
+            # - AdjustBalanceView met le remaining voulu par le HR
 
             for leave in leaves.filter(status='approved'):
                 if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
@@ -583,10 +715,36 @@ class UserDetailView(LoginRequiredMixin, View):
                 else:
                     special_used += days
 
-            total_days_used = sick_used + special_used
+            days_used = sick_used + special_used
+            total_days_used = days_used
+
+            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
+            real_unpaid = max(0, days_used - total)
+            # Répartit l'unpaid : d'abord sur special, puis sur sick
+            if real_unpaid > 0:
+                special_unpaid = min(real_unpaid, special_used)
+                sick_unpaid = max(0, real_unpaid - special_unpaid)
+            else:
+                sick_unpaid = 0
+                special_unpaid = 0
+
             leave_summary = [
-                {'type': 'Sick Leave', 'used': sick_used, 'category': 'sick'},
-                {'type': 'Special Leave', 'used': special_used, 'category': 'special'},
+                {
+                    'type': 'Sick Leave',
+                    'used': sick_used,
+                    'unpaid': sick_unpaid,
+                    'category': 'sick',
+                    'remaining': remaining,  # depuis DB
+                    'total': total,          # depuis DB
+                },
+                {
+                    'type': 'Special Leave',
+                    'used': special_used,
+                    'unpaid': special_unpaid,
+                    'category': 'special',
+                    'remaining': remaining,  # depuis DB
+                    'total': total,          # depuis DB
+                },
             ]
 
         elif target_user.role == 'admin':
@@ -603,7 +761,7 @@ class UserDetailView(LoginRequiredMixin, View):
                             current += timedelta(days=1)
 
                 total_days_used += days_used
-                no_limit = balance.total_days == 0
+                no_limit = balance.total_days == 0 or balance.leave_type in NO_LIMIT_TYPES
 
                 leave_summary.append({
                     'type': balance.leave_type.replace('_', ' ').title(),
@@ -612,16 +770,23 @@ class UserDetailView(LoginRequiredMixin, View):
                     'remaining': None if no_limit else balance.days_remaining,
                     'carried_over': balance.carried_over,
                     'unpaid': False if no_limit else balance.days_remaining < 0,
+                    'category': None,
                 })
 
         # HOS, HOA, HR → pas de balance
+
+        # Calcul total unpaid pour overview
+        total_unpaid = 0
+        if target_user.role in ['teacher', 'head_of_department']:
+            total_unpaid = real_unpaid
 
         return render(request, 'dashboard/user_detail.html', {
             'target_user': target_user,
             'leaves': leaves,
             'leave_summary': leave_summary,
             'total_days_used': total_days_used,
-            'user_role': target_user.role,  # ← important pour le template !
+            'user_role': target_user.role,
+            'total_unpaid': total_unpaid,
         })
     
 class ExportLeavesView(LoginRequiredMixin, View):
@@ -1118,30 +1283,35 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         email.send()
 
     def _update_balance(self, leave):
-            if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                count = 0.5
-            else:
-                count = 0
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        count += 1
-                    current += timedelta(days=1)
-
-            # pour les profs et HOD → toujours mettre à jour vacation_leave
-            if leave.user.role in ['teacher', 'head_of_department']:
-                leave_type = 'vacation_leave'
-            else:
-                leave_type = leave.leave_type
-
-            balance, created = LeaveBalance.objects.get_or_create(
-                user=leave.user,
-                leave_type=leave_type,
-                defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
-            )
-            balance.days_used = float(balance.days_used) + count
-            balance.days_remaining = float(balance.days_remaining) - count
-            balance.save()
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+            count = 0.5
+        else:
+            count = 0
+            current = leave.start_leave
+            while current <= leave.end_leave:
+                if current.weekday() < 5:
+                    count += 1
+                current += timedelta(days=1)
+    
+        if leave.user.role in ['teacher', 'head_of_department']:
+            leave_type = 'vacation_leave'
+        else:
+            leave_type = leave.leave_type
+    
+        balance, created = LeaveBalance.objects.get_or_create(
+            user=leave.user,
+            leave_type=leave_type,
+            defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
+        )
+        balance.days_used = float(balance.days_used) + count
+        balance.days_remaining = float(balance.days_remaining) - count
+        balance.save()
+    
+        # Auto-unpaid : marque CE leave comme unpaid si il fait depasser le total
+        if leave.user.role in ['teacher', 'head_of_department']:
+            if balance.days_remaining < 0 and not leave.is_unpaid:
+                leave.is_unpaid = True
+                leave.save()
 
 
 class RejectLeaveDashboardView(LoginRequiredMixin, View):
@@ -1493,8 +1663,8 @@ class CertificateView(LoginRequiredMixin, View):
         messages.success(request, 'Certificate request sent to HR!')
         return redirect('certificate')
 
-
 class HRFileLeaveView(LoginRequiredMixin, View):
+
     def get(self, request):
         if request.user.role != 'hr':
             return redirect('dashboard')
@@ -1510,15 +1680,20 @@ class HRFileLeaveView(LoginRequiredMixin, View):
     def post(self, request):
         if request.user.role != 'hr':
             return redirect('dashboard')
+
+        from datetime import datetime
+
         user_id = request.POST.get('user_id')
         leave_type = request.POST.get('leave_type')
-        start_leave = request.POST.get('start_leave')
-        end_leave = request.POST.get('end_leave')
         half_day = request.POST.get('half_day', 'none')
         reason = request.POST.get('reason_for_leave', 'Filed by HR')
         is_unpaid = request.POST.get('is_unpaid') == 'on'
-        from datetime import datetime
+
+        start_leave = datetime.strptime(request.POST.get('start_leave'), '%Y-%m-%d').date()
+        end_leave = datetime.strptime(request.POST.get('end_leave'), '%Y-%m-%d').date()
+
         target_user = User.objects.get(id=user_id)
+
         leave = Leave.objects.create(
             user=target_user,
             leave_type=leave_type,
@@ -1534,27 +1709,32 @@ class HRFileLeaveView(LoginRequiredMixin, View):
         return redirect('hr_file_leave')
 
     def _update_balance(self, leave):
-            if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                count = 0.5
-            else:
-                count = 0
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        count += 1
-                    current += timedelta(days=1)
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+            count = 0.5
+        else:
+            count = 0
+            current = leave.start_leave
+            while current <= leave.end_leave:
+                if current.weekday() < 5:
+                    count += 1
+                current += timedelta(days=1)
 
-            # pour les profs et HOD → toujours mettre à jour vacation_leave
-            if leave.user.role in ['teacher', 'head_of_department']:
-                leave_type = 'vacation_leave'
-            else:
-                leave_type = leave.leave_type
+        if leave.user.role in ['teacher', 'head_of_department']:
+            leave_type = 'vacation_leave'
+        else:
+            leave_type = leave.leave_type
 
-            balance, created = LeaveBalance.objects.get_or_create(
-                user=leave.user,
-                leave_type=leave_type,
-                defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
-            )
-            balance.days_used = float(balance.days_used) + count
-            balance.days_remaining = float(balance.days_remaining) - count
-            balance.save()
+        balance, created = LeaveBalance.objects.get_or_create(
+            user=leave.user,
+            leave_type=leave_type,
+            defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
+        )
+        balance.days_used = float(balance.days_used) + count
+        balance.days_remaining = float(balance.days_remaining) - count
+        balance.save()
+
+        # Auto-unpaid : marque CE leave comme unpaid si il fait depasser le total
+        if leave.user.role in ['teacher', 'head_of_department']:
+            if balance.days_remaining < 0 and not leave.is_unpaid:
+                leave.is_unpaid = True
+                leave.save()
