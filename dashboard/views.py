@@ -841,11 +841,11 @@ class ExportLeavesView(LoginRequiredMixin, View):
             'Status', 'Unpaid Days', 'Submitted On'
         ]
         for col, header in enumerate(headers, 1):
-            c = ws.cell(row=4, column=col, value=header)
-            c.font = header_font
-            c.fill = header_fill
-            c.alignment = header_align
-            c.border = thin_border
+            cell = ws.cell(row=4, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_align
+            cell.border = thin_border
         ws.row_dimensions[4].height = 40
 
         leaves = Leave.objects.filter(user__isnull=False).exclude(
@@ -857,72 +857,38 @@ class ExportLeavesView(LoginRequiredMixin, View):
             name = f"{leave.user.first_name} {leave.user.last_name}" if leave.user else "Deleted User"
             role = leave.user.role if leave.user else "unknown"
 
-            # calcul durée avec half day
+            # Calcul duree
             if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                leave_days = 0.5
                 duration = f"0.5 day ({leave.half_day.title()})"
             else:
-                count = 0
-                current = leave.start_leave
-                while current <= leave.end_leave:
-                    if current.weekday() < 5:
-                        count += 1
-                    current += timedelta(days=1)
-                duration = f"{count} day(s)"
+                leave_days = 0
+                cur = leave.start_leave
+                while cur <= leave.end_leave:
+                    if cur.weekday() < 5:
+                        leave_days += 1
+                    cur += timedelta(days=1)
+                duration = f"{int(leave_days)} day(s)"
 
-            # calcul unpaid days
-            # calcul unpaid days
+            # Calcul unpaid_days — logique simple et correcte
             unpaid_days = '—'
+
             if leave.status == 'approved' and leave.user:
 
-                # si marqué manuellement comme unpaid par HOS/HOA
                 if leave.is_unpaid:
-                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                        unpaid_days = 0.5
-                    else:
-                        count = 0
-                        cur = leave.start_leave
-                        while cur <= leave.end_leave:
-                            if cur.weekday() < 5:
-                                count += 1
-                            cur += timedelta(days=1)
-                        unpaid_days = count
+                    # Ce leave est entierement unpaid (split Option B
+                    # ou marque manuellement par HOS/HOA)
+                    unpaid_days = leave_days
 
                 elif leave.user.role == 'admin':
+                    # Pour les admins : unpaid si balance negative
+                    # pour ce type de leave specifique
                     balance = LeaveBalance.objects.filter(
                         user=leave.user,
                         leave_type=leave.leave_type
-                    ).order_by('-total_days').first()
+                    ).first()
                     if balance and balance.days_remaining < 0:
-                        unpaid_days = abs(balance.days_remaining)
-
-                elif leave.user.role in ['teacher', 'head_of_department', 'head_of_school']:
-                    all_approved = Leave.objects.filter(
-                        user=leave.user,
-                        status='approved'
-                    )
-                    total_used = 0
-                    for l in all_approved:
-                        if l.half_day in ['morning', 'afternoon'] and l.start_leave == l.end_leave:
-                            total_used += 0.5
-                        else:
-                            cur = l.start_leave
-                            while cur <= l.end_leave:
-                                if cur.weekday() < 5:
-                                    total_used += 1
-                                cur += timedelta(days=1)
-
-                    if total_used > 30:
-                        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                            leave_days = 0.5
-                        else:
-                            leave_days = 0
-                            cur = leave.start_leave
-                            while cur <= leave.end_leave:
-                                if cur.weekday() < 5:
-                                    leave_days += 1
-                                cur += timedelta(days=1)
-                        over = total_used - 30
-                        unpaid_days = min(leave_days, over)
+                        unpaid_days = min(leave_days, abs(balance.days_remaining))
 
             data = [
                 name,
@@ -938,30 +904,29 @@ class ExportLeavesView(LoginRequiredMixin, View):
             ]
 
             for col, value in enumerate(data, 1):
-                c = ws.cell(row=row_idx, column=col, value=value)
-                c.font = Font(name='Arial', size=10)
-                c.border = thin_border
-                c.alignment = cell_align if col in [1, 7] else center_align
+                cell = ws.cell(row=row_idx, column=col, value=value)
+                cell.font = Font(name='Arial', size=10)
+                cell.border = thin_border
+                cell.alignment = cell_align if col in [1, 7] else center_align
 
                 if col == 8:  # Status
                     if leave.status == 'approved':
-                        c.fill = approved_fill
-                        c.font = Font(name='Arial', size=10, bold=True, color='155724')
+                        cell.fill = approved_fill
+                        cell.font = Font(name='Arial', size=10, bold=True, color='155724')
                     elif leave.status == 'rejected':
-                        c.fill = rejected_fill
-                        c.font = Font(name='Arial', size=10, bold=True, color='721c24')
+                        cell.fill = rejected_fill
+                        cell.font = Font(name='Arial', size=10, bold=True, color='721c24')
                     else:
-                        c.fill = pending_fill
-                        c.font = Font(name='Arial', size=10, bold=True, color='856404')
+                        cell.fill = pending_fill
+                        cell.font = Font(name='Arial', size=10, bold=True, color='856404')
                 elif col == 9 and unpaid_days != '—':  # Unpaid Days
-                    c.fill = unpaid_fill
-                    c.font = Font(name='Arial', size=10, bold=True, color='721c24')
+                    cell.fill = unpaid_fill
+                    cell.font = Font(name='Arial', size=10, bold=True, color='721c24')
                 elif is_alt:
-                    c.fill = alt_fill
+                    cell.fill = alt_fill
 
             ws.row_dimensions[row_idx].height = 20
 
-        # largeurs généreuses pour éviter les coupures
         col_widths = [25, 22, 14, 14, 22, 20, 38, 18, 18, 22]
         for col, width in enumerate(col_widths, 1):
             ws.column_dimensions[get_column_letter(col)].width = width
@@ -971,10 +936,11 @@ class ExportLeavesView(LoginRequiredMixin, View):
         response = HttpResponse(
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = f'attachment; filename="GESM_Leave_Report_{date.today().strftime("%Y%m%d")}.xlsx"'
+        response['Content-Disposition'] = (
+            f'attachment; filename="GESM_Leave_Report_{date.today().strftime("%Y%m%d")}.xlsx"'
+        )
         wb.save(response)
         return response
-
 from accounts.models import User, Department
 
 class EditUserView(LoginRequiredMixin, View):
@@ -1162,7 +1128,6 @@ class ResetBalancesView(LoginRequiredMixin, View):
         return redirect('dashboard')
         
 
-
 class ApproveLeaveDashboardView(LoginRequiredMixin, View):
     def post(self, request, leave_id):
         leave = Leave.objects.get(id=leave_id)
@@ -1193,6 +1158,9 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
             leave.status = 'approved'
             leave.is_unpaid = request.POST.get('is_unpaid') == '1'
             leave.save()
+
+            # Sauvegarde end_leave original avant le split
+            leave._original_end = leave.end_leave
             self._update_balance(leave)
 
             recipients = set()
@@ -1225,6 +1193,9 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
             leave.status = 'approved'
             leave.is_unpaid = request.POST.get('is_unpaid') == '1'
             leave.save()
+
+            # Sauvegarde end_leave original avant le split
+            leave._original_end = leave.end_leave
             self._update_balance(leave)
 
             recipients = set()
@@ -1251,7 +1222,11 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
         elif request.user.role == 'hr':
             leave.status = 'approved'
             leave.save()
+
+            # Sauvegarde end_leave original avant le split
+            leave._original_end = leave.end_leave
             self._update_balance(leave)
+
             self._send_email(
                 to=user.email,
                 subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
@@ -1282,36 +1257,114 @@ class ApproveLeaveDashboardView(LoginRequiredMixin, View):
             )
         email.send()
 
+    def _get_split_date(self, leave, paid_days):
+        """Trouve la date apres laquelle le leave devient unpaid.
+        paid_days = nombre de jours ouvrables paid.
+        Retourne le dernier jour paid."""
+        count = 0
+        current = leave.start_leave
+        last_paid = leave.start_leave
+        while current <= leave._original_end:
+            if current.weekday() < 5:
+                count += 1
+                if count <= paid_days:
+                    last_paid = current
+                else:
+                    break
+            current += timedelta(days=1)
+        return last_paid
+
     def _update_balance(self, leave):
-        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+        # Calcul du nombre de jours ouvrables du leave
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
             count = 0.5
         else:
             count = 0
             current = leave.start_leave
-            while current <= leave.end_leave:
+            while current <= leave._original_end:
                 if current.weekday() < 5:
                     count += 1
                 current += timedelta(days=1)
-    
+
         if leave.user.role in ['teacher', 'head_of_department']:
             leave_type = 'vacation_leave'
         else:
             leave_type = leave.leave_type
-    
+
         balance, created = LeaveBalance.objects.get_or_create(
             user=leave.user,
             leave_type=leave_type,
             defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
         )
-        balance.days_used = float(balance.days_used) + count
-        balance.days_remaining = float(balance.days_remaining) - count
-        balance.save()
-    
-        # Auto-unpaid : marque CE leave comme unpaid si il fait depasser le total
+
+        # Pour teacher/HOD : verifier si depassement et splitter si necessaire
         if leave.user.role in ['teacher', 'head_of_department']:
-            if balance.days_remaining < 0 and not leave.is_unpaid:
+            remaining_before = float(balance.days_remaining)
+
+            if count > remaining_before and remaining_before > 0:
+                # Depassement partiel : split en 2 leaves
+                paid_days = remaining_before
+                unpaid_days = count - remaining_before
+
+                # Calcule la date de split
+                split_date = self._get_split_date(leave, int(paid_days))
+
+                # Sauvegarde la end_leave originale avant modification
+                original_end = leave._original_end
+
+                # Modifie le leave original : seulement les jours paid
+                leave.end_leave = split_date
+                leave.is_unpaid = False
+                leave.save()
+
+                # Cree le nouveau leave unpaid pour les jours restants
+                next_day = split_date + timedelta(days=1)
+                # Avance au prochain jour ouvre si weekend
+                while next_day.weekday() >= 5:
+                    next_day += timedelta(days=1)
+
+                Leave.objects.create(
+                    user=leave.user,
+                    leave_type=leave.leave_type,
+                    start_leave=next_day,
+                    end_leave=original_end,
+                    half_day='none',
+                    reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                    status='approved',
+                    is_unpaid=True,
+                )
+
+                # Met a jour la balance : paid_days utilises
+                balance.days_used = float(balance.days_used) + paid_days
+                balance.days_remaining = 0
+                balance.save()
+
+                # Met a jour la balance pour les jours unpaid
+                balance.days_used = float(balance.days_used) + unpaid_days
+                balance.days_remaining = float(balance.days_remaining) - unpaid_days
+                balance.save()
+
+            elif remaining_before <= 0:
+                # Tout est unpaid
                 leave.is_unpaid = True
                 leave.save()
+                balance.days_used = float(balance.days_used) + count
+                balance.days_remaining = float(balance.days_remaining) - count
+                balance.save()
+
+            else:
+                # Pas de depassement : tout est paid
+                leave.is_unpaid = False
+                leave.save()
+                balance.days_used = float(balance.days_used) + count
+                balance.days_remaining = float(balance.days_remaining) - count
+                balance.save()
+
+        else:
+            # Admin/HR : pas de split, logique normale
+            balance.days_used = float(balance.days_used) + count
+            balance.days_remaining = float(balance.days_remaining) - count
+            balance.save()
 
 
 class RejectLeaveDashboardView(LoginRequiredMixin, View):
@@ -1704,17 +1757,39 @@ class HRFileLeaveView(LoginRequiredMixin, View):
             status='approved',
             is_unpaid=is_unpaid,
         )
+
+        # Sauvegarde end_leave original avant le split
+        leave._original_end = end_leave
         self._update_balance(leave)
+
         messages.success(request, f'Leave filed and approved for {target_user.first_name} {target_user.last_name}.')
         return redirect('hr_file_leave')
 
+    def _get_split_date(self, leave, paid_days):
+        """Trouve la date apres laquelle le leave devient unpaid.
+        paid_days = nombre de jours ouvrables paid.
+        Retourne le dernier jour paid."""
+        count = 0
+        current = leave.start_leave
+        last_paid = leave.start_leave
+        while current <= leave._original_end:
+            if current.weekday() < 5:
+                count += 1
+                if count <= paid_days:
+                    last_paid = current
+                else:
+                    break
+            current += timedelta(days=1)
+        return last_paid
+
     def _update_balance(self, leave):
-        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+        # Calcul du nombre de jours ouvrables du leave
+        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
             count = 0.5
         else:
             count = 0
             current = leave.start_leave
-            while current <= leave.end_leave:
+            while current <= leave._original_end:
                 if current.weekday() < 5:
                     count += 1
                 current += timedelta(days=1)
@@ -1729,12 +1804,72 @@ class HRFileLeaveView(LoginRequiredMixin, View):
             leave_type=leave_type,
             defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
         )
-        balance.days_used = float(balance.days_used) + count
-        balance.days_remaining = float(balance.days_remaining) - count
-        balance.save()
 
-        # Auto-unpaid : marque CE leave comme unpaid si il fait depasser le total
+        # Pour teacher/HOD : verifier si depassement et splitter si necessaire
         if leave.user.role in ['teacher', 'head_of_department']:
-            if balance.days_remaining < 0 and not leave.is_unpaid:
+            remaining_before = float(balance.days_remaining)
+
+            if count > remaining_before and remaining_before > 0:
+                # Depassement partiel : split en 2 leaves
+                paid_days = remaining_before
+                unpaid_days = count - remaining_before
+
+                # Calcule la date de split
+                split_date = self._get_split_date(leave, int(paid_days))
+
+                # Sauvegarde la end_leave originale avant modification
+                original_end = leave._original_end
+
+                # Modifie le leave original : seulement les jours paid
+                leave.end_leave = split_date
+                leave.is_unpaid = False
+                leave.save()
+
+                # Cree le nouveau leave unpaid pour les jours restants
+                next_day = split_date + timedelta(days=1)
+                # Avance au prochain jour ouvre si weekend
+                while next_day.weekday() >= 5:
+                    next_day += timedelta(days=1)
+
+                Leave.objects.create(
+                    user=leave.user,
+                    leave_type=leave.leave_type,
+                    start_leave=next_day,
+                    end_leave=original_end,
+                    half_day='none',
+                    reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                    status='approved',
+                    is_unpaid=True,
+                )
+
+                # Met a jour la balance : paid_days utilises
+                balance.days_used = float(balance.days_used) + paid_days
+                balance.days_remaining = 0
+                balance.save()
+
+                # Met a jour la balance pour les jours unpaid
+                balance.days_used = float(balance.days_used) + unpaid_days
+                balance.days_remaining = float(balance.days_remaining) - unpaid_days
+                balance.save()
+
+            elif remaining_before <= 0:
+                # Tout est unpaid
                 leave.is_unpaid = True
                 leave.save()
+                balance.days_used = float(balance.days_used) + count
+                balance.days_remaining = float(balance.days_remaining) - count
+                balance.save()
+
+            else:
+                # Pas de depassement : tout est paid
+                leave.is_unpaid = False
+                leave.save()
+                balance.days_used = float(balance.days_used) + count
+                balance.days_remaining = float(balance.days_remaining) - count
+                balance.save()
+
+        else:
+            # Admin/HR : pas de split, logique normale
+            balance.days_used = float(balance.days_used) + count
+            balance.days_remaining = float(balance.days_remaining) - count
+            balance.save()
