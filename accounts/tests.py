@@ -26,7 +26,6 @@ class RegistrationTests(TestCase):
        self.dept = Department.objects.create(name='Mathematics')
 
    def test_teacher_can_register(self):
-       """Teacher can register — account inactive until HR approves"""
        self.client.post(reverse('register'), {
            'username': 'teacher01', 'first_name': 'Marine',
            'last_name': 'Dubois', 'email': 'marine@gesm.org',
@@ -39,7 +38,6 @@ class RegistrationTests(TestCase):
        self.assertFalse(user.is_approved)
 
    def test_admin_can_register(self):
-       """Admin can register — no department needed"""
        self.client.post(reverse('register'), {
            'username': 'admin01', 'first_name': 'Rory',
            'last_name': 'Gilmore', 'email': 'rory@gesm.org',
@@ -50,7 +48,6 @@ class RegistrationTests(TestCase):
        self.assertFalse(user.is_active)
 
    def test_hod_can_register(self):
-       """HOD can register with a department"""
        self.client.post(reverse('register'), {
            'username': 'hod01', 'first_name': 'Jean',
            'last_name': 'Martin', 'email': 'hod@gesm.org',
@@ -60,7 +57,6 @@ class RegistrationTests(TestCase):
        self.assertTrue(User.objects.filter(username='hod01').exists())
 
    def test_hos_can_register(self):
-       """HOS can register"""
        self.client.post(reverse('register'), {
            'username': 'hos01', 'first_name': 'Pierre',
            'last_name': 'Dupont', 'email': 'hos@gesm.org',
@@ -70,7 +66,6 @@ class RegistrationTests(TestCase):
        self.assertTrue(User.objects.filter(username='hos01').exists())
 
    def test_scheduling_team_can_register(self):
-       """Scheduling team can register"""
        self.client.post(reverse('register'), {
            'username': 'sched01', 'first_name': 'Kirk',
            'last_name': 'Gleason', 'email': 'sched@gesm.org',
@@ -80,7 +75,6 @@ class RegistrationTests(TestCase):
        self.assertTrue(User.objects.filter(username='sched01').exists())
 
    def test_cannot_register_as_hr(self):
-       """HR role blocked from public registration"""
        self.client.post(reverse('register'), {
            'username': 'fake_hr', 'email': 'fake@gesm.org',
            'role': 'hr', 'password1': 'TestPass1234!', 'password2': 'TestPass1234!',
@@ -88,7 +82,6 @@ class RegistrationTests(TestCase):
        self.assertFalse(User.objects.filter(username='fake_hr').exists())
 
    def test_cannot_register_as_hoa(self):
-       """HOA role blocked from public registration"""
        self.client.post(reverse('register'), {
            'username': 'fake_hoa', 'email': 'hoa@gesm.org',
            'role': 'head_of_admin', 'password1': 'TestPass1234!',
@@ -97,7 +90,6 @@ class RegistrationTests(TestCase):
        self.assertFalse(User.objects.filter(username='fake_hoa').exists())
 
    def test_cannot_register_as_calendar_access(self):
-       """Calendar access role blocked from public registration"""
        self.client.post(reverse('register'), {
            'username': 'fake_cal', 'email': 'cal@gesm.org',
            'role': 'calendar_access', 'password1': 'TestPass1234!',
@@ -106,7 +98,6 @@ class RegistrationTests(TestCase):
        self.assertFalse(User.objects.filter(username='fake_cal').exists())
 
    def test_hod_register_becomes_dept_head(self):
-       """HOD who registers becomes head of their department automatically"""
        self.client.post(reverse('register'), {
            'username': 'hod01', 'first_name': 'Jean',
            'last_name': 'Martin', 'email': 'hod@gesm.org',
@@ -118,7 +109,6 @@ class RegistrationTests(TestCase):
        self.assertEqual(self.dept.head, hod)
 
    def test_hod_register_assigns_superior_to_existing_teachers(self):
-       """HOD who registers becomes superior of existing teachers in dept"""
        teacher = make_user('teacher01', 'teacher', dept=self.dept)
        self.client.post(reverse('register'), {
            'username': 'hod01', 'first_name': 'Jean',
@@ -131,7 +121,6 @@ class RegistrationTests(TestCase):
        self.assertEqual(teacher.superior, hod)
 
    def test_teacher_register_assigned_to_dept_hod(self):
-       """Teacher who registers gets dept HOD as superior automatically"""
        hod = make_user('hod01', 'head_of_department', dept=self.dept)
        self.dept.head = hod
        self.dept.save()
@@ -145,7 +134,6 @@ class RegistrationTests(TestCase):
        self.assertEqual(teacher.superior, hod)
 
    def test_email_verification_token_created(self):
-       """Registration creates email verification token"""
        self.client.post(reverse('register'), {
            'username': 'teacher02', 'first_name': 'Paris',
            'last_name': 'Geller', 'email': 'paris@gesm.org',
@@ -155,7 +143,6 @@ class RegistrationTests(TestCase):
        self.assertIsNotNone(user.email_verification_token)
 
    def test_email_verification_activates_flag(self):
-       """Clicking verification link sets is_email_verified to True"""
        self.client.post(reverse('register'), {
            'username': 'teacher03', 'first_name': 'Lane',
            'last_name': 'Kim', 'email': 'lane@gesm.org',
@@ -167,7 +154,6 @@ class RegistrationTests(TestCase):
        self.assertTrue(user.is_email_verified)
 
    def test_unverified_user_cannot_login(self):
-       """User who hasn't verified email cannot login"""
        self.client.post(reverse('register'), {
            'username': 'teacher04', 'first_name': 'Michel',
            'last_name': 'Gerard', 'email': 'michel@gesm.org',
@@ -218,7 +204,6 @@ class LoginTests(TestCase):
        self.assertRedirects(response, reverse('login'))
 
    def test_unauthenticated_dashboard_redirects_to_login(self):
-       """Knowing the URL is not enough — must be logged in"""
        response = self.client.get(reverse('dashboard'))
        self.assertEqual(response.status_code, 302)
        self.assertIn('login', response.url)
@@ -235,7 +220,6 @@ class LoginTests(TestCase):
        self.assertIn('login', response.url)
 
    def test_teacher_cannot_access_another_users_detail(self):
-       """Teacher cannot view another user's profile via URL"""
        make_user('teacher_spy', 'teacher')
        target = make_user('target_user', 'admin')
        self.client.login(username='teacher_spy', password='TestPass1234!')
@@ -254,12 +238,57 @@ class LoginTests(TestCase):
        self.assertEqual(response.status_code, 302)
 
    def test_teacher_dashboard_does_not_show_hr_content(self):
-       """Teacher sees their own dashboard, not HR content"""
        make_user('teacher_x', 'teacher')
        self.client.login(username='teacher_x', password='TestPass1234!')
        response = self.client.get(reverse('dashboard'))
        self.assertEqual(response.status_code, 200)
        self.assertNotContains(response, 'All Leave Requests')
+
+   def test_unauthenticated_cannot_access_hr_file_leave(self):
+       """Knowing the URL is not enough for HR-only pages"""
+       response = self.client.get(reverse('hr_file_leave'))
+       self.assertEqual(response.status_code, 302)
+       self.assertIn('login', response.url)
+
+   def test_teacher_cannot_access_hr_file_leave(self):
+       make_user('teacher_x', 'teacher')
+       self.client.login(username='teacher_x', password='TestPass1234!')
+       response = self.client.get(reverse('hr_file_leave'))
+       self.assertEqual(response.status_code, 302)
+
+   def test_unauthenticated_cannot_access_back_to_work(self):
+       response = self.client.get(reverse('back_to_work'))
+       self.assertEqual(response.status_code, 302)
+       self.assertIn('login', response.url)
+
+   def test_admin_cannot_access_back_to_work(self):
+       """Admin cannot access Back to Work tab"""
+       make_user('admin01', 'admin')
+       self.client.login(username='admin01', password='TestPass1234!')
+       response = self.client.get(reverse('back_to_work'))
+       self.assertRedirects(response, reverse('dashboard'))
+
+   def test_hr_cannot_access_back_to_work(self):
+       """HR cannot access Back to Work tab"""
+       make_user('hr01', 'hr')
+       self.client.login(username='hr01', password='TestPass1234!')
+       response = self.client.get(reverse('back_to_work'))
+       self.assertRedirects(response, reverse('dashboard'))
+
+   def test_hr_cannot_access_certificate(self):
+       """HR cannot request certificate of employment"""
+       make_user('hr01', 'hr')
+       self.client.login(username='hr01', password='TestPass1234!')
+       response = self.client.get(reverse('certificate'))
+       self.assertRedirects(response, reverse('dashboard'))
+
+   def test_session_expires_after_logout(self):
+       """After logout, session is cleared and dashboard is inaccessible"""
+       self.client.login(username='active', password='TestPass1234!')
+       self.client.get(reverse('logout'))
+       response = self.client.get(reverse('dashboard'))
+       self.assertEqual(response.status_code, 302)
+       self.assertIn('login', response.url)
 
 
 # ================================================================
@@ -441,7 +470,9 @@ class HRCreateAdminTests(TestCase):
            'last_name': 'Gilmore', 'email': 'cal@gesm.org',
            'role': 'calendar_access', 'password': 'TestPass1234!',
        })
-       self.assertTrue(User.objects.filter(username='cal01', role='calendar_access').exists())
+       self.assertTrue(User.objects.filter(
+           username='cal01', role='calendar_access'
+       ).exists())
 
    def test_hr_can_delete_another_hr(self):
        hr2 = make_user('hr02', 'hr')
@@ -449,8 +480,7 @@ class HRCreateAdminTests(TestCase):
        self.assertFalse(User.objects.filter(id=hr2.id).exists())
 
    def test_last_hr_cannot_delete_themselves(self):
-       """Last HR account cannot be deleted"""
-       response = self.client.post(reverse('delete_own_account'))
+       response = self.client.post(reverse('delete_account'))
        self.assertTrue(User.objects.filter(username='hr01').exists())
 
    def test_non_hr_cannot_access_create_admin(self):
@@ -464,6 +494,81 @@ class HRCreateAdminTests(TestCase):
        self.client.login(username='sched01', password='TestPass1234!')
        response = self.client.get(reverse('create_admin_user'))
        self.assertEqual(response.status_code, 302)
+
+
+# ================================================================
+# HR EDIT USER TESTS — nouveau
+# ================================================================
+class HREditUserTests(TestCase):
+   def setUp(self):
+       self.client = Client()
+       self.hr = make_user('hr01', 'hr')
+       self.dept = Department.objects.create(name='Mathematics')
+       self.client.login(username='hr01', password='TestPass1234!')
+
+   def test_hr_can_promote_teacher_to_hod(self):
+       teacher = make_user('teacher01', 'teacher', dept=self.dept)
+       self.client.post(reverse('edit_user', args=[teacher.id]), {
+           'first_name': teacher.first_name,
+           'last_name': teacher.last_name,
+           'email': teacher.email,
+           'role': 'head_of_department',
+           'department': self.dept.id,
+       })
+       teacher.refresh_from_db()
+       self.assertEqual(teacher.role, 'head_of_department')
+
+   def test_promoted_hod_appears_in_department_list(self):
+       teacher = make_user('teacher01', 'teacher', dept=self.dept)
+       self.client.post(reverse('edit_user', args=[teacher.id]), {
+           'first_name': teacher.first_name,
+           'last_name': teacher.last_name,
+           'email': teacher.email,
+           'role': 'head_of_department',
+           'department': self.dept.id,
+       })
+       response = self.client.get(reverse('department_list'))
+       dept_data = response.context['dept_data']
+       maths = next(d for d in dept_data if d['dept'].name == 'Mathematics')
+       self.assertIsNotNone(maths['dept'].head)
+
+   def test_downgraded_hod_no_longer_in_dept_head(self):
+       hod = make_user('hod01', 'head_of_department', dept=self.dept)
+       self.dept.head = hod
+       self.dept.save()
+       self.client.post(reverse('edit_user', args=[hod.id]), {
+           'first_name': hod.first_name,
+           'last_name': hod.last_name,
+           'email': hod.email,
+           'role': 'teacher',
+           'department': self.dept.id,
+       })
+       self.dept.refresh_from_db()
+       if self.dept.head:
+           self.assertNotEqual(self.dept.head.id, hod.id)
+
+   def test_hr_can_reassign_department(self):
+       dept2 = Department.objects.create(name='Sciences')
+       teacher = make_user('teacher01', 'teacher', dept=self.dept)
+       self.client.post(reverse('edit_user', args=[teacher.id]), {
+           'first_name': teacher.first_name,
+           'last_name': teacher.last_name,
+           'email': teacher.email,
+           'role': 'teacher',
+           'department': dept2.id,
+       })
+       teacher.refresh_from_db()
+       self.assertEqual(teacher.department, dept2)
+
+   def test_non_hr_cannot_edit_user(self):
+       teacher = make_user('teacher01', 'teacher')
+       target = make_user('target01', 'teacher')
+       self.client.login(username='teacher01', password='TestPass1234!')
+       response = self.client.post(reverse('edit_user', args=[target.id]), {
+           'role': 'hr',
+       })
+       target.refresh_from_db()
+       self.assertNotEqual(target.role, 'hr')
 
 
 # ================================================================
@@ -505,7 +610,6 @@ class DepartmentTests(TestCase):
        self.assertEqual(maths['dept'].head, hod)
 
    def test_downgraded_hod_not_shown_in_dept(self):
-       """HOD downgraded to teacher no longer shown as HOD in dept"""
        hod = make_user('hod01', 'head_of_department', dept=self.dept)
        self.dept.head = hod
        self.dept.save()
@@ -523,7 +627,9 @@ class DepartmentTests(TestCase):
            reverse('department_delete', args=[self.dept.id]), follow=True
        )
        messages = list(response.context['messages'])
-       self.assertTrue(any('Warning' in str(m) or 'HOD' in str(m) for m in messages))
+       self.assertTrue(any(
+           'Warning' in str(m) or 'HOD' in str(m) for m in messages
+       ))
 
    def test_non_hr_cannot_create_department(self):
        teacher = make_user('t01', 'teacher')
