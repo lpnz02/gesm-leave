@@ -5,7 +5,6 @@ Developed during internship at GESM, Philippines - 2026
 
 
 TABLE OF CONTENTS
------------------
 1. Project Overview
 2. Tech Stack
 3. Installation (Local)
@@ -19,9 +18,8 @@ TABLE OF CONTENTS
 11. Known Issues
 
 
-================================================================
 1. PROJECT OVERVIEW
-================================================================
+
 
 GESM Leave Management is a web application built for a school
 to manage staff leave requests. It replaces a manual paper-based
@@ -35,9 +33,8 @@ system with a full digital workflow including:
 - Annual reset with carry-over logic
 
 
-================================================================
 2. TECH STACK
-================================================================
+
 
 Backend     : Django 5.2, Python 3.10
 Database    : SQLite (dev) -> PostgreSQL (production : need to be done after first pull)
@@ -48,9 +45,8 @@ PDF         : reportlab (for leave certificates)
 Auth        : Django built-in + custom User model
 
 
-================================================================
 3. INSTALLATION (LOCAL)
-================================================================
+
 
 Prerequisites: Python 3.10+, pip, git
 
@@ -81,9 +77,8 @@ python manage.py shell
 python manage.py runserver
 
 
-================================================================
 4. CONFIGURATION (.env) : to fill up after pull on git
-================================================================
+
 
 Create a .env file at the root of the project (same level as manage.py).
 NEVER commit this file to git. (already in .gitignore)
@@ -129,9 +124,9 @@ DEFAULT_FROM_EMAIL=GESM Leave System <noreply@gesm.org>
 TIME_ZONE=Asia/Manila
 
 
-================================================================
+
 5. FIRST LAUNCH
-================================================================
+
 
 After running migrations, create the first HR account manually.
 This account can then create all other admin accounts (HOA, HOD etc.)
@@ -156,9 +151,9 @@ Then log in at http://127.0.0.1:8000 and change the password
 immediately via the key icon in the navbar.
 
 
-================================================================
+
 6. USER ROLES
-================================================================
+
 
 ROLE                HOW CREATED                 DASHBOARD
 -----------         ------------------          -----------------
@@ -174,10 +169,8 @@ calendar_access     Created by HR only          Scheduling dashboard
 Note: All accounts (except HR-created ones) are inactive until
 HR manually approves them from the HR dashboard.
 
-
-================================================================
 7. FEATURES BY ROLE
-================================================================
+
 
 --- TEACHER / HEAD OF DEPARTMENT ---
     - Submit leave requests (vacation, sick, emergency, etc.)
@@ -229,9 +222,9 @@ HR manually approves them from the HR dashboard.
     - Download Excel of all absences with unpaid days detail
 
 
-================================================================
+
 8. LEAVE BALANCE LOGIC
-================================================================
+
 
 TEACHERS AND HOD:
     - Single balance: vacation_leave (30 days default)
@@ -265,9 +258,8 @@ CALENDAR COLORS:
     - Scheduling team: always blue (no red shown)
 
 
-================================================================
 9. DEPLOYMENT (PRODUCTION)
-================================================================
+
 
 1. Install PostgreSQL and create database:
 
@@ -298,9 +290,9 @@ CALENDAR COLORS:
 Important: Set DEBUG=False in production!
 
 
-================================================================
+
 10. RUNNING TESTS (not necessary : already ran before final push)
-================================================================
+
 
 Run all tests:
 python manage.py test accounts.tests leaves.tests dashboard.tests
@@ -319,9 +311,8 @@ approval chain, email notifications, balance logic, HR features,
 calendar colors and URL security. Already ran before final push.
 
 
-================================================================
 11. KNOWN ISSUES / NOTES
-================================================================
+
 
 - The calendar language depends on the browser locale.
   Set USE_L10N=False in settings.py to force English.
