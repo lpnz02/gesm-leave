@@ -64,7 +64,7 @@ NEVER commit this file to git. (gitignore)
 SECRET_KEY=your-secret-key-here
 DEBUG=True (FALSE ? not sure which to put)
 ALLOWED_HOSTS= 
-# Leave empty for SQLite (default)
+Leave empty for SQLite (default)
 DB_ENGINE=
 DB_NAME=
 DB_USER=
