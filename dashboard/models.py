@@ -1,6 +1,14 @@
 from django.db import models
 from django.db import models
 from django.conf import settings
+
+
+# ============================================================================================
+# MODELS for the DASHBOARD : New tabs (notifications sent) do migrate/makemigration if changes
+#   BackToWork : sends notification to schedulingTeam when HOD/Teacher come back to work
+#   PaySlipRequest : sends notification to accounting@gesm.org requesting payslip details
+#   CertificateRequest : sends notification to HR to request a certificate of employment
+# ============================================================================================
  
 class BackToWork(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)

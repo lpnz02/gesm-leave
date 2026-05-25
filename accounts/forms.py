@@ -3,6 +3,11 @@ from django.contrib.auth.forms import UserCreationForm
 from .models import User, Department
 
 
+# =================================================================================
+#  DIFFEERENT FORMS : RegisterFrom, LoginForm and DepartmentForm
+# =================================================================================
+
+
 class RegisterForm(UserCreationForm):
     ALLOWED_ROLES = [
         ('teacher', 'Teacher'),
@@ -41,17 +46,17 @@ class RegisterForm(UserCreationForm):
             user.department = dept
 
             if user.role == 'teacher':
-                # assigner le HOD du département comme supérieur
+                # assigns department head as superior 
                 if dept.head:
                     user.superior = dept.head
 
             elif user.role == 'head_of_department':
-                # le HOD devient automatiquement le head du département
+                # HOD becomes automatically head of department when account activated
                 if commit:
                     user.save()
                     dept.head = user
                     dept.save()
-                    # mettre à jour le supérieur de tous les profs déjà dans ce département
+                    # if HOD registers after teachers : he is set as superior
                     for teacher in User.objects.filter(department=dept, role='teacher'):
                         teacher.superior = user
                         teacher.save()

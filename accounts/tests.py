@@ -5,6 +5,11 @@ from accounts.models import User, Department
 from leaves.models import LeaveBalance
 
 
+# ================================================================
+# DIFFERENT TESTS (explicit name + organized by categories)
+# ================================================================
+
+
 def make_user(username, role, dept=None, superior=None, active=True):
    u = User.objects.create_user(
        username=username, email=f'{username}@gesm.org',

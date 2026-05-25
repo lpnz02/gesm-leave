@@ -3,7 +3,9 @@ from django.conf import settings
 from datetime import timedelta
 import uuid
 
-
+# ==============================================================================================
+# Leave Models (ApprovalToken unused : leaves approved on the dashboard can be reused if needed)
+# ==============================================================================================
 
 class Leave(models.Model):
     LEAVE_CHOICES = [
@@ -44,7 +46,7 @@ class Leave(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     pdf_attachment = models.FileField(upload_to='leave_pdfs/', null=True, blank=True)
     half_day = models.CharField(max_length=10, choices=HALF_DAY_CHOICES, default='none')
-    is_unpaid = models.BooleanField(default=False)  # ← nouveau
+    is_unpaid = models.BooleanField(default=False)  
 
     def __str__(self):
         return f"{self.user} - {self.leave_type} - {self.status}"

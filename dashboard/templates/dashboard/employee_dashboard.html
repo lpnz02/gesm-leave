@@ -39,13 +39,6 @@
                         <small>{% if user_role == 'teacher' or user_role == 'head_of_department' %}Absences{% else %}Used{% endif %}</small>
                         <strong>{{ item.used }} days</strong>
                     </div>
-                    {% if item.unpaid and item.unpaid > 0 %}
-                    <div class="d-flex justify-content-between align-items-center mb-1"
-                        style="color: #ffeb3b;">
-                        <small>⚠️ Unpaid Absences</small>
-                        <strong>{{ item.unpaid }} days</strong>
-                    </div>
-                    {% endif %}
                     {% if user_role != 'teacher' and user_role != 'head_of_department' %}
                         {% if item.remaining is not None %}
                         <div class="d-flex justify-content-between align-items-center mb-1">
@@ -71,15 +64,6 @@
         </div>
     </div>
 </div>
-
-{% if total_unpaid and total_unpaid > 0 and user_role == 'teacher' %}
-<div class="alert alert-warning d-flex align-items-center mb-4" role="alert">
-    <i class="fas fa-exclamation-triangle me-2"></i>
-    <div>
-        <strong>⚠️ {{ total_unpaid }} day(s) unpaid this year</strong> — these days exceed your leave allowance.
-    </div>
-</div>
-{% endif %}
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">

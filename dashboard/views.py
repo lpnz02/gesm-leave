@@ -15,6 +15,47 @@ from django.conf import settings
 from django.utils import timezone
 from django.contrib import messages
 from .models import PaySlipRequest
+from django.utils import timezone as tz
+from datetime import datetime
+from django.core.mail import send_mail
+from .models import CertificateRequest
+from django.core.mail import send_mail
+from .models import BackToWork
+from django.contrib.auth import update_session_auth_hash
+from django.contrib import messages
+from accounts.models import User, Department
+from itertools import chain
+# ========================================================================================================================================
+# Different views for dashboard : 
+# class DashboardView(LoginRequiredMixin, View):
+#       What each account sees / how it is shown on dashboard (leave count etc...) + Assigns to correct URL/HTML (idem all views)
+# class AdjustBalanceView(LoginRequiredMixin, View): HR Adjusts Remaining days
+# class CreateAdminUserView(LoginRequiredMixin, View):HR creates HOA, HR or Calendar Access account
+# class DeleteOwnAccountView(LoginRequiredMixin, View): HR Deletes his own account when turnover
+# class CalendarView(LoginRequiredMixin, View): whole calendar view (what each account sees on their dashboard + color coded)
+# class PromoteUserView(LoginRequiredMixin, View): HR Edit User 
+# class DeleteUserView(LoginRequiredMixin, View): HR delete User
+# class DeleteLeaveView(LoginRequiredMixin, View): HR delete view (days added back to remaining days)
+# class UserDetailView(LoginRequiredMixin, View): HR, HOA, HOD, HOS can get an overview of teacher's and admins' dashboard
+# class ExportLeavesView(LoginRequiredMixin, View): Excel file 
+# class EditUserView(LoginRequiredMixin, View): HR Edit User (name, department,...)
+# class ResetBalancesView(LoginRequiredMixin, View): Resets at new year (vacation leaves carried over for Admin employees)
+# class RejectLeaveDashboardView(LoginRequiredMixin, View): Leave rejected + Email sent
+# class ArchivesView(LoginRequiredMixin, View): HR Achive (NEEDS IT SUPERVISION)
+# class DownloadPDFView(LoginRequiredMixin, View): HR can dowload Archives
+# class DeleteArchivesView(LoginRequiredMixin, View):
+# class DepartmentListView(LoginRequiredMixin, View):
+# class DepartmentCreateView(LoginRequiredMixin, View):
+# class DepartmentDeleteView(LoginRequiredMixin, View):
+# class ChangePasswordView(LoginRequiredMixin, View):
+# class BackToWorkView(LoginRequiredMixin, View):
+# class PaySlipView(LoginRequiredMixin, View):
+# class CertificateView(LoginRequiredMixin, View):
+# class HRFileLeaveView(LoginRequiredMixin, View):
+#       def _update_balance(self, leave): important allows to define how leaves are deducted from remaining days/ added / different cases 
+# class ApproveLeaveDashboardView(LoginRequiredMixin, View):
+#      def _update_balance(self, leave): same as HRFileLeave (same logic when HR files auto approved leaves) 
+# ========================================================================================================================================
 
 class DashboardView(LoginRequiredMixin, View):
     def get(self, request):
@@ -51,10 +92,7 @@ class DashboardView(LoginRequiredMixin, View):
                     special_used += days
 
             days_used = sick_used + special_used
-
-            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
             real_unpaid = max(0, days_used - total)
-            # Répartit l'unpaid : d'abord sur special, puis sur sick
             if real_unpaid > 0:
                 special_unpaid = min(real_unpaid, special_used)
                 sick_unpaid = max(0, real_unpaid - special_unpaid)
@@ -66,8 +104,6 @@ class DashboardView(LoginRequiredMixin, View):
                 {'type': 'Sick Leave', 'used': sick_used, 'unpaid': sick_unpaid, 'category': 'sick'},
                 {'type': 'Special Leave', 'used': special_used, 'unpaid': special_unpaid, 'category': 'special'},
             ]
-
-            # Calcul total jours unpaid pour affichage alerte
             total_unpaid = real_unpaid
 
             return render(request, 'dashboard/employee_dashboard.html', {
@@ -156,10 +192,7 @@ class DashboardView(LoginRequiredMixin, View):
                     special_used += days
 
             days_used = sick_used + special_used
-
-            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
             real_unpaid = max(0, days_used - total)
-            # Répartit l'unpaid : d'abord sur special, puis sur sick
             if real_unpaid > 0:
                 special_unpaid = min(real_unpaid, special_used)
                 sick_unpaid = max(0, real_unpaid - special_unpaid)
@@ -171,8 +204,6 @@ class DashboardView(LoginRequiredMixin, View):
                 {'type': 'Sick Leave', 'used': sick_used, 'unpaid': sick_unpaid, 'category': 'sick'},
                 {'type': 'Special Leave', 'used': special_used, 'unpaid': special_unpaid, 'category': 'special'},
             ]
-
-            # Calcul total jours unpaid pour affichage alerte
             total_unpaid = real_unpaid
 
             return render(request, 'dashboard/hod_dashboard.html', {
@@ -221,8 +252,6 @@ class DashboardView(LoginRequiredMixin, View):
             })
 
         elif user.role == 'hr':
-            from accounts.models import Department
-            from django.utils import timezone as tz
 
             all_leaves = Leave.objects.filter(user__isnull=False).exclude(user__role='head_of_admin')
             all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
@@ -278,14 +307,11 @@ class AdjustBalanceView(LoginRequiredMixin, View):
             balance = LeaveBalance.objects.filter(
                 user=user, leave_type='vacation_leave'
             ).first()
-            if balance:
-                # HR définit les jours restants
-                # total = used + nouveau remaining
+            if balance :
                 balance.days_remaining = days_remaining
                 balance.total_days = float(balance.days_used) + days_remaining
                 balance.save()
             else:
-                # Crée la balance si elle n'existe pas
                 LeaveBalance.objects.create(
                     user=user,
                     leave_type='vacation_leave',
@@ -321,8 +347,6 @@ class AdjustBalanceView(LoginRequiredMixin, View):
                 if current.weekday() < 5:
                     count += 1
                 current += timedelta(days=1)
-
-        # Pour les profs et HOD → toujours vacation_leave
         if leave.user.role in ['teacher', 'head_of_department']:
             leave_type = 'vacation_leave'
         else:
@@ -337,7 +361,6 @@ class AdjustBalanceView(LoginRequiredMixin, View):
         balance.days_remaining = float(balance.days_remaining) - count
         balance.save()
 
-        # Auto-unpaid : marque CE leave comme unpaid s'il fait dépasser le total
         if leave.user.role in ['teacher', 'head_of_department']:
             if balance.days_remaining < 0 and not leave.is_unpaid:
                 leave.is_unpaid = True
@@ -460,11 +483,8 @@ class CalendarView(LoginRequiredMixin, View):
             if filter_department != 'all':
                 leaves_approved = leaves_approved.filter(user__department__id=filter_department)
                 leaves_pending_sick = leaves_pending_sick.filter(user__department__id=filter_department)
-
-        from itertools import chain
         all_leaves = list(chain(leaves_approved, leaves_pending_sick))
 
-        # Précalcul des totaux utilisés par user (pour unpaid_info)
         user_totals = {}
         user_balance_totals = {}
         for leave in all_leaves:
@@ -500,17 +520,14 @@ class CalendarView(LoginRequiredMixin, View):
                     if not is_weekend:
                         for leave in all_leaves:
                             if leave.start_leave <= current_date <= leave.end_leave:
-                                # Couleur basée sur is_unpaid du leave (pas sur le total global)
                                 if leave.status != 'approved':
-                                    color = '#adb5bd'  # gris = pending sick
+                                    color = '#adb5bd'  # grey = pending sick
                                 elif user.role == 'scheduling_team':
-                                    color = '#1a3a6b'  # scheduling voit tout en bleu
+                                    color = '#1a3a6b'  # scheduling blue paid/unpaid (no distinction)
                                 elif leave.is_unpaid:
-                                    color = '#dc3545'  # rouge = unpaid (marqué par HOD ou auto)
+                                    color = '#dc3545'  # red = unpaid 
                                 else:
-                                    color = '#1a3a6b'  # bleu = paid
-
-                                # Info unpaid dans le nom : affiche seulement le nb de jours en trop
+                                    color = '#1a3a6b'  # blue = paid
                                 unpaid_info = ''
                                 if (user.role != 'scheduling_team'
                                         and leave.status == 'approved'
@@ -538,8 +555,6 @@ class CalendarView(LoginRequiredMixin, View):
                         'is_weekend': is_weekend,
                     })
             calendar_data.append(week_data)
-
-        from accounts.models import Department
         departments = Department.objects.all()
 
         if month == 1:
@@ -624,12 +639,11 @@ class DeleteLeaveView(LoginRequiredMixin, View):
 
         leave = Leave.objects.get(id=leave_id)
 
-        # si le leave était approuvé, on rembourse les jours
+        # if leave approved : days are added back 
         if leave.status == 'approved':
             user = leave.user
 
             if user.role in ['teacher', 'head_of_department']:
-                # profs/HOD : balance vacation_leave globale
                 balance = LeaveBalance.objects.filter(
                     user=user, leave_type='vacation_leave'
                 ).first()
@@ -648,7 +662,7 @@ class DeleteLeaveView(LoginRequiredMixin, View):
                     balance.save()
 
             elif user.role == 'admin':
-                # admins : balance par catégorie
+                # admins : categories
                 balance = LeaveBalance.objects.filter(
                     user=user, leave_type=leave.leave_type
                 ).first()
@@ -695,9 +709,6 @@ class UserDetailView(LoginRequiredMixin, View):
             ).first()
             total = float(balance.total_days) if balance else 30
             remaining = float(balance.days_remaining) if balance else 30
-            # On lit directement depuis la DB car :
-            # - _update_balance soustrait à chaque approbation
-            # - AdjustBalanceView met le remaining voulu par le HR
 
             for leave in leaves.filter(status='approved'):
                 if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
@@ -718,9 +729,8 @@ class UserDetailView(LoginRequiredMixin, View):
             days_used = sick_used + special_used
             total_days_used = days_used
 
-            # Calcul du vrai total unpaid = max(0, total_utilisé - total_autorisé)
             real_unpaid = max(0, days_used - total)
-            # Répartit l'unpaid : d'abord sur special, puis sur sick
+
             if real_unpaid > 0:
                 special_unpaid = min(real_unpaid, special_used)
                 sick_unpaid = max(0, real_unpaid - special_unpaid)
@@ -734,16 +744,16 @@ class UserDetailView(LoginRequiredMixin, View):
                     'used': sick_used,
                     'unpaid': sick_unpaid,
                     'category': 'sick',
-                    'remaining': remaining,  # depuis DB
-                    'total': total,          # depuis DB
+                    'remaining': remaining,  
+                    'total': total,          
                 },
                 {
                     'type': 'Special Leave',
                     'used': special_used,
                     'unpaid': special_unpaid,
                     'category': 'special',
-                    'remaining': remaining,  # depuis DB
-                    'total': total,          # depuis DB
+                    'remaining': remaining,  
+                    'total': total,         
                 },
             ]
 
@@ -773,9 +783,6 @@ class UserDetailView(LoginRequiredMixin, View):
                     'category': None,
                 })
 
-        # HOS, HOA, HR → pas de balance
-
-        # Calcul total unpaid pour overview
         total_unpaid = 0
         if target_user.role in ['teacher', 'head_of_department']:
             total_unpaid = real_unpaid
@@ -857,7 +864,7 @@ class ExportLeavesView(LoginRequiredMixin, View):
             name = f"{leave.user.first_name} {leave.user.last_name}" if leave.user else "Deleted User"
             role = leave.user.role if leave.user else "unknown"
 
-            # Calcul duree
+            # HALF DAYS
             if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
                 leave_days = 0.5
                 duration = f"0.5 day ({leave.half_day.title()})"
@@ -870,19 +877,14 @@ class ExportLeavesView(LoginRequiredMixin, View):
                     cur += timedelta(days=1)
                 duration = f"{int(leave_days)} day(s)"
 
-            # Calcul unpaid_days — logique simple et correcte
             unpaid_days = '—'
 
             if leave.status == 'approved' and leave.user:
 
                 if leave.is_unpaid:
-                    # Ce leave est entierement unpaid (split Option B
-                    # ou marque manuellement par HOS/HOA)
                     unpaid_days = leave_days
 
                 elif leave.user.role == 'admin':
-                    # Pour les admins : unpaid si balance negative
-                    # pour ce type de leave specifique
                     balance = LeaveBalance.objects.filter(
                         user=leave.user,
                         leave_type=leave.leave_type
@@ -941,7 +943,6 @@ class ExportLeavesView(LoginRequiredMixin, View):
         )
         wb.save(response)
         return response
-from accounts.models import User, Department
 
 class EditUserView(LoginRequiredMixin, View):
    def get(self, request, user_id):
@@ -975,7 +976,6 @@ class EditUserView(LoginRequiredMixin, View):
        new_role = request.POST.get('role')
        target_user.role = new_role
 
-       # Si l'user n'est plus HOD → nettoyer l'ancien département
        if old_role == 'head_of_department' and new_role != 'head_of_department':
            if old_dept:
                if old_dept.head == target_user:
@@ -985,8 +985,6 @@ class EditUserView(LoginRequiredMixin, View):
                    teacher.superior = None
                    teacher.save()
            target_user.department = None
-
-       # gérer le département
        dept_id = request.POST.get('department')
        if dept_id:
            new_dept = Department.objects.get(id=dept_id)
@@ -1003,7 +1001,6 @@ class EditUserView(LoginRequiredMixin, View):
 
            target_user.department = new_dept
 
-           # si HOD → mettre à jour le head du nouveau département
            if new_role == 'head_of_department':
                new_dept.head = target_user
                new_dept.save()
@@ -1012,9 +1009,7 @@ class EditUserView(LoginRequiredMixin, View):
                    teacher.save()
 
        else:
-           # pas de département sélectionné
            if old_role != 'head_of_department' or new_role == 'head_of_department':
-               # seulement si pas déjà nettoyé plus haut
                if old_dept:
                    if old_dept.head == target_user:
                        old_dept.head = None
@@ -1082,7 +1077,6 @@ class ResetBalancesView(LoginRequiredMixin, View):
             'others': 1,
         }
 
-        # reset admins/admins — carry over SEULEMENT vacation_leave
         for user in User.objects.filter(role__in=['admin']):
             for leave_type, default_total in admin_defaults.items():
                 balance, created = LeaveBalance.objects.get_or_create(
@@ -1097,7 +1091,6 @@ class ResetBalancesView(LoginRequiredMixin, View):
                 )
                 if not created:
                     if leave_type == 'vacation_leave':
-                        # carry over uniquement les vacation days non utilisés
                         unused = max(0, balance.days_remaining)
                         new_total = default_total + unused
                         balance.total_days = new_total
@@ -1105,14 +1098,11 @@ class ResetBalancesView(LoginRequiredMixin, View):
                         balance.days_remaining = new_total
                         balance.carried_over = unused
                     else:
-                        # toutes les autres catégories → remises au défaut
                         balance.total_days = default_total
                         balance.days_used = 0
                         balance.days_remaining = default_total
                         balance.carried_over = 0
                     balance.save()
-
-        # reset profs ET HOD — 30j fixe, pas de report
         for user in User.objects.filter(role__in=['teacher', 'head_of_department', 'head_of_school']):
             balance = LeaveBalance.objects.filter(
                 user=user, leave_type='vacation_leave'
@@ -1123,248 +1113,13 @@ class ResetBalancesView(LoginRequiredMixin, View):
                 balance.days_remaining = 30
                 balance.carried_over = 0
                 balance.save()
-
         Leave.objects.all().delete()
+        BackToWork.objects.all().delete()
+        PaySlipRequest.objects.all().delete()
+        CertificateRequest.objects.all().delete()
+
+        messages.success(request, 'All balances reset and histories cleared for new year.')
         return redirect('dashboard')
-        
-
-class ApproveLeaveDashboardView(LoginRequiredMixin, View):
-    def post(self, request, leave_id):
-        leave = Leave.objects.get(id=leave_id)
-        user = leave.user
-
-        # HOD approuve → pending_hos + email HOS avec PDF
-        if request.user.role == 'head_of_department' and leave.status == 'pending_hod':
-            leave.status = 'pending_hos'
-            leave.save()
-            for hos in User.objects.filter(role='head_of_school'):
-                self._send_email(
-                    to=hos.email,
-                    subject=f'Leave Request Pending Your Approval — {user.first_name} {user.last_name}',
-                    body=(
-                        f'Hello,\n\n'
-                        f'{user.first_name} {user.last_name} has requested {leave.leave_type.replace("_", " ").title()} leave '
-                        f'from {leave.start_leave} to {leave.end_leave}.\n\n'
-                        f'Reason: {leave.reason_for_leave}\n\n'
-                        f'This request has been approved by the Head of Department '
-                        f'and is now pending your approval. Please log in to your dashboard to approve or reject.\n\n'
-                        f'GESM Leave Management'
-                    ),
-                    leave=leave,
-                )
-
-        # HOS approuve → approved + email prof + HOD + HOS + HR + scheduling
-        elif request.user.role == 'head_of_school' and leave.status == 'pending_hos':
-            leave.status = 'approved'
-            leave.is_unpaid = request.POST.get('is_unpaid') == '1'
-            leave.save()
-
-            # Sauvegarde end_leave original avant le split
-            leave._original_end = leave.end_leave
-            self._update_balance(leave)
-
-            recipients = set()
-            recipients.add(user.email)
-            if user.superior:
-                recipients.add(user.superior.email)
-            for hos in User.objects.filter(role='head_of_school'):
-                recipients.add(hos.email)
-            for hr in User.objects.filter(role='hr'):
-                recipients.add(hr.email)
-            for sched in User.objects.filter(role='scheduling_team'):
-                recipients.add(sched.email)
-
-            for email_addr in recipients:
-                self._send_email(
-                    to=email_addr,
-                    subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
-                    body=(
-                        f'Hello,\n\n'
-                        f'{user.first_name} {user.last_name} leave request for '
-                        f'{leave.leave_type.replace("_", " ").title()} '
-                        f'from {leave.start_leave} to {leave.end_leave} '
-                        f'has been fully approved.\n\n'
-                        f'GESM Leave Management'
-                    ),
-                )
-
-        # HOA approuve → approved + email admin + HOA + HR
-        elif request.user.role == 'head_of_admin' and leave.status == 'pending_hoa':
-            leave.status = 'approved'
-            leave.is_unpaid = request.POST.get('is_unpaid') == '1'
-            leave.save()
-
-            # Sauvegarde end_leave original avant le split
-            leave._original_end = leave.end_leave
-            self._update_balance(leave)
-
-            recipients = set()
-            recipients.add(user.email)
-            for hoa in User.objects.filter(role='head_of_admin'):
-                recipients.add(hoa.email)
-            for hr in User.objects.filter(role='hr'):
-                recipients.add(hr.email)
-
-            for email_addr in recipients:
-                self._send_email(
-                    to=email_addr,
-                    subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
-                    body=(
-                        f'Hello,\n\n'
-                        f'{user.first_name} {user.last_name} leave request for '
-                        f'{leave.leave_type.replace("_", " ").title()} '
-                        f'from {leave.start_leave} to {leave.end_leave} '
-                        f'has been approved by the Head of Administration.\n\n'
-                        f'GESM Leave Management'
-                    ),
-                )
-
-        elif request.user.role == 'hr':
-            leave.status = 'approved'
-            leave.save()
-
-            # Sauvegarde end_leave original avant le split
-            leave._original_end = leave.end_leave
-            self._update_balance(leave)
-
-            self._send_email(
-                to=user.email,
-                subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
-                body=(
-                    f'Hello {user.first_name},\n\n'
-                    f'Your {leave.leave_type.replace("_", " ").title()} leave request '
-                    f'from {leave.start_leave} to {leave.end_leave} '
-                    f'has been approved by HR.\n\n'
-                    f'GESM Leave Management'
-                ),
-            )
-
-        return redirect('dashboard')
-
-    def _send_email(self, to, subject, body, leave=None):
-        email = EmailMessage(
-            subject=subject,
-            body=body,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            to=[to],
-        )
-        if leave and leave.pdf_attachment:
-            leave.pdf_attachment.seek(0)
-            email.attach(
-                leave.pdf_attachment.name,
-                leave.pdf_attachment.read(),
-                'application/pdf'
-            )
-        email.send()
-
-    def _get_split_date(self, leave, paid_days):
-        """Trouve la date apres laquelle le leave devient unpaid.
-        paid_days = nombre de jours ouvrables paid.
-        Retourne le dernier jour paid."""
-        count = 0
-        current = leave.start_leave
-        last_paid = leave.start_leave
-        while current <= leave._original_end:
-            if current.weekday() < 5:
-                count += 1
-                if count <= paid_days:
-                    last_paid = current
-                else:
-                    break
-            current += timedelta(days=1)
-        return last_paid
-
-    def _update_balance(self, leave):
-        # Calcul du nombre de jours ouvrables du leave
-        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
-            count = 0.5
-        else:
-            count = 0
-            current = leave.start_leave
-            while current <= leave._original_end:
-                if current.weekday() < 5:
-                    count += 1
-                current += timedelta(days=1)
-
-        if leave.user.role in ['teacher', 'head_of_department']:
-            leave_type = 'vacation_leave'
-        else:
-            leave_type = leave.leave_type
-
-        balance, created = LeaveBalance.objects.get_or_create(
-            user=leave.user,
-            leave_type=leave_type,
-            defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
-        )
-
-        # Pour teacher/HOD : verifier si depassement et splitter si necessaire
-        if leave.user.role in ['teacher', 'head_of_department']:
-            remaining_before = float(balance.days_remaining)
-
-            if count > remaining_before and remaining_before > 0:
-                # Depassement partiel : split en 2 leaves
-                paid_days = remaining_before
-                unpaid_days = count - remaining_before
-
-                # Calcule la date de split
-                split_date = self._get_split_date(leave, int(paid_days))
-
-                # Sauvegarde la end_leave originale avant modification
-                original_end = leave._original_end
-
-                # Modifie le leave original : seulement les jours paid
-                leave.end_leave = split_date
-                leave.is_unpaid = False
-                leave.save()
-
-                # Cree le nouveau leave unpaid pour les jours restants
-                next_day = split_date + timedelta(days=1)
-                # Avance au prochain jour ouvre si weekend
-                while next_day.weekday() >= 5:
-                    next_day += timedelta(days=1)
-
-                Leave.objects.create(
-                    user=leave.user,
-                    leave_type=leave.leave_type,
-                    start_leave=next_day,
-                    end_leave=original_end,
-                    half_day='none',
-                    reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
-                    status='approved',
-                    is_unpaid=True,
-                )
-
-                # Met a jour la balance : paid_days utilises
-                balance.days_used = float(balance.days_used) + paid_days
-                balance.days_remaining = 0
-                balance.save()
-
-                # Met a jour la balance pour les jours unpaid
-                balance.days_used = float(balance.days_used) + unpaid_days
-                balance.days_remaining = float(balance.days_remaining) - unpaid_days
-                balance.save()
-
-            elif remaining_before <= 0:
-                # Tout est unpaid
-                leave.is_unpaid = True
-                leave.save()
-                balance.days_used = float(balance.days_used) + count
-                balance.days_remaining = float(balance.days_remaining) - count
-                balance.save()
-
-            else:
-                # Pas de depassement : tout est paid
-                leave.is_unpaid = False
-                leave.save()
-                balance.days_used = float(balance.days_used) + count
-                balance.days_remaining = float(balance.days_remaining) - count
-                balance.save()
-
-        else:
-            # Admin/HR : pas de split, logique normale
-            balance.days_used = float(balance.days_used) + count
-            balance.days_remaining = float(balance.days_remaining) - count
-            balance.save()
 
 
 class RejectLeaveDashboardView(LoginRequiredMixin, View):
@@ -1422,8 +1177,7 @@ class ArchivesView(LoginRequiredMixin, View):
     def get(self, request):
         if request.user.role != 'hr':
             return redirect('dashboard')
-        
-        # tous les congés avec PDF
+
         leaves_with_pdf = Leave.objects.exclude(
             pdf_attachment=''
         ).exclude(
@@ -1465,18 +1219,17 @@ class DeleteArchivesView(LoginRequiredMixin, View):
             pdf_attachment=None
         )
         
+# ==============================
+# Need to ask for IT Supervision
+# ==============================
         for leave in leaves_with_pdf:
             if leave.pdf_attachment:
-                # supprimer le fichier physique
                 if os.path.exists(leave.pdf_attachment.path):
                     os.remove(leave.pdf_attachment.path)
                 leave.pdf_attachment = None
                 leave.save()
         
         return redirect('archives')
-    
-
-from accounts.models import User, Department
 
 class DepartmentListView(LoginRequiredMixin, View):
    def get(self, request):
@@ -1491,13 +1244,9 @@ class DepartmentListView(LoginRequiredMixin, View):
            teacher_count = User.objects.filter(
                department=dept, role='teacher'
            ).count()
-
-           # Vérifie que le head a bien le rôle HOD — sinon on le retire
            if dept.head and dept.head.role != 'head_of_department':
                dept.head = None
                dept.save()
-
-           # si pas de head assigné, cherche un HOD dans le département
            if not dept.head:
                auto_hod = User.objects.filter(
                    department=dept, role='head_of_department'
@@ -1547,12 +1296,10 @@ class DepartmentDeleteView(LoginRequiredMixin, View):
             return redirect('dashboard')
         dept = Department.objects.get(id=dept_id)
         
-        # vérifier si des HOD sont dans ce département
         hods_in_dept = User.objects.filter(department=dept, role='head_of_department')
         teachers_in_dept = User.objects.filter(department=dept, role='teacher')
         
         if hods_in_dept.exists() or teachers_in_dept.exists():
-            from django.contrib import messages
             names = ', '.join([f"{u.first_name} {u.last_name}" for u in hods_in_dept])
             messages.warning(request,
                 f"Warning: Department '{dept.name}' has been deleted but "
@@ -1563,9 +1310,6 @@ class DepartmentDeleteView(LoginRequiredMixin, View):
         
         dept.delete()
         return redirect('department_list')
-    
-
-from django.contrib.auth import update_session_auth_hash
 
 class ChangePasswordView(LoginRequiredMixin, View):
     def get(self, request):
@@ -1577,7 +1321,6 @@ class ChangePasswordView(LoginRequiredMixin, View):
         new_password1 = request.POST.get('new_password1')
         new_password2 = request.POST.get('new_password2')
 
-        # changement username
         if new_username and new_username != request.user.username:
             if User.objects.filter(username=new_username).exclude(id=request.user.id).exists():
                 messages.error(request, 'This username is already taken.')
@@ -1586,7 +1329,6 @@ class ChangePasswordView(LoginRequiredMixin, View):
             request.user.save()
             messages.success(request, 'Username updated successfully!')
 
-        # changement mot de passe (optionnel si fields vides)
         if current_password or new_password1 or new_password2:
             if not request.user.check_password(current_password):
                 messages.error(request, 'Current password is incorrect.')
@@ -1608,7 +1350,6 @@ class ManageAccountingEmailView(LoginRequiredMixin, View):
     def post(self, request):
         if request.user.role != 'hr': return redirect('dashboard')
         action = request.POST.get('action')
-        from accounts.models import AccountingEmail
         if action == 'add':
             label = request.POST.get('label')
             email = request.POST.get('email')
@@ -1616,38 +1357,59 @@ class ManageAccountingEmailView(LoginRequiredMixin, View):
         elif action == 'delete':
             AccountingEmail.objects.filter(id=request.POST.get('email_id')).delete()
         return redirect('dashboard')
-    
-from .models import BackToWork
+
  
 class BackToWorkView(LoginRequiredMixin, View):
-    ALLOWED_ROLES = ['teacher', 'admin', 'head_of_department', 'hr']
+   ALLOWED_ROLES = ['teacher', 'head_of_department']
 
-    def get(self, request):
-        if request.user.role not in self.ALLOWED_ROLES:
-            return redirect('dashboard')
-        from .models import BackToWork
-        history = BackToWork.objects.filter(user=request.user).order_by('-sent_at')
-        return render(request, 'dashboard/back_to_work.html', {'history': history})
+   def get(self, request):
+       if request.user.role not in self.ALLOWED_ROLES:
+           return redirect('dashboard')
+       history = BackToWork.objects.filter(user=request.user).order_by('-sent_at')
+       return render(request, 'dashboard/back_to_work.html', {'history': history})
 
-    def post(self, request):
-        if request.user.role not in self.ALLOWED_ROLES:
-            return redirect('dashboard')
-        from .models import BackToWork
-        full_name = request.POST.get('full_name', '').strip()
-        return_date = request.POST.get('return_date')
-        message = request.POST.get('message', '').strip()
-        BackToWork.objects.create(user=request.user, full_name=full_name,
-            return_date=return_date, message=message)
-        for sched in User.objects.filter(role='scheduling_team'):
-            send_mail(
-                subject=f'Back to Work — {full_name}',
-                message=f'{full_name} will return on {return_date}.\n\n{message}\n\nGESM Leave Management',
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[sched.email],
-            )
-        messages.success(request, 'Back to work notification sent!')
-        return redirect('back_to_work')
+   def post(self, request):
+       if request.user.role not in self.ALLOWED_ROLES:
+           return redirect('dashboard')
 
+       full_name = request.POST.get('full_name', '').strip()
+       return_date = request.POST.get('return_date')
+       message = request.POST.get('message', '').strip()
+
+       BackToWork.objects.create(
+           user=request.user,
+           full_name=full_name,
+           return_date=return_date,
+           message=message,
+       )
+
+       recipients = set()
+
+       # Scheduling team
+       for sched in User.objects.filter(role='scheduling_team'):
+           recipients.add(sched.email)
+
+       # HOS
+       for hos in User.objects.filter(role='head_of_school'):
+           recipients.add(hos.email)
+
+       # Superieur direct (HOD du prof, ou rien si c'est un HOD)
+       if request.user.superior:
+           recipients.add(request.user.superior.email)
+
+       for email in recipients:
+           send_mail(
+               subject=f'Back to Work — {full_name}',
+               message=(
+                   f'{full_name} will return to work on {return_date}.\n\n'
+                   f'{message}\n\nGESM Leave Management'
+               ),
+               from_email=settings.DEFAULT_FROM_EMAIL,
+               recipient_list=[email],
+           )
+
+       messages.success(request, 'Back to work notification sent!')
+       return redirect('back_to_work')
 
 class PaySlipView(LoginRequiredMixin, View):
     ALLOWED_ROLES = ['teacher', 'admin', 'head_of_department', 'head_of_school', 'hr']
@@ -1666,7 +1428,6 @@ class PaySlipView(LoginRequiredMixin, View):
         PaySlipRequest.objects.create(
             user=request.user, full_name=full_name, month=month
         )
-        from django.core.mail import send_mail
         send_mail(
             subject=f'Pay Slip Request — {full_name} — {month}',
             message=(
@@ -1679,11 +1440,8 @@ class PaySlipView(LoginRequiredMixin, View):
         messages.success(request, 'Pay slip request sent!')
         return redirect('pay_slip')
 
-
-from .models import CertificateRequest
- 
 class CertificateView(LoginRequiredMixin, View):
-    ALLOWED_ROLES = ['teacher', 'admin', 'head_of_department', 'head_of_school', 'hr']
+    ALLOWED_ROLES = ['teacher', 'admin', 'head_of_department', 'head_of_school']
  
     def get(self, request):
         if request.user.role not in self.ALLOWED_ROLES:
@@ -1702,7 +1460,6 @@ class CertificateView(LoginRequiredMixin, View):
             purpose=purpose, with_salary=with_salary
         )
         salary_text = 'with salary details' if with_salary else 'without salary details'
-        from django.core.mail import send_mail
         for hr in User.objects.filter(role='hr'):
             send_mail(
                 subject=f'Certificate of Employment Request — {full_name}',
@@ -1718,158 +1475,463 @@ class CertificateView(LoginRequiredMixin, View):
 
 class HRFileLeaveView(LoginRequiredMixin, View):
 
-    def get(self, request):
-        if request.user.role != 'hr':
-            return redirect('dashboard')
-        all_users = User.objects.filter(
-            role__in=['teacher', 'head_of_department', 'admin', 'hr'],
-            is_active=True
-        ).order_by('role', 'last_name')
-        return render(request, 'dashboard/hr_file_leave.html', {
-            'all_users': all_users,
-            'leave_types': Leave.LEAVE_CHOICES,
-        })
+   def get(self, request):
+       if request.user.role != 'hr':
+           return redirect('dashboard')
+       all_users = User.objects.filter(
+           role__in=['teacher', 'head_of_department', 'admin', 'hr'],
+           is_active=True
+       ).order_by('role', 'last_name')
+       return render(request, 'dashboard/hr_file_leave.html', {
+           'all_users': all_users,
+           'leave_types': Leave.LEAVE_CHOICES,
+       })
 
-    def post(self, request):
-        if request.user.role != 'hr':
-            return redirect('dashboard')
+   def post(self, request):
+       if request.user.role != 'hr':
+           return redirect('dashboard')
 
-        from datetime import datetime
+       user_id = request.POST.get('user_id')
+       leave_type = request.POST.get('leave_type')
+       half_day = request.POST.get('half_day', 'none')
+       reason = request.POST.get('reason_for_leave', 'Filed by HR')
+       is_unpaid = request.POST.get('is_unpaid') == 'on'
 
-        user_id = request.POST.get('user_id')
-        leave_type = request.POST.get('leave_type')
-        half_day = request.POST.get('half_day', 'none')
-        reason = request.POST.get('reason_for_leave', 'Filed by HR')
-        is_unpaid = request.POST.get('is_unpaid') == 'on'
+       start_leave = datetime.strptime(request.POST.get('start_leave'), '%Y-%m-%d').date()
+       end_leave = datetime.strptime(request.POST.get('end_leave'), '%Y-%m-%d').date()
 
-        start_leave = datetime.strptime(request.POST.get('start_leave'), '%Y-%m-%d').date()
-        end_leave = datetime.strptime(request.POST.get('end_leave'), '%Y-%m-%d').date()
+       target_user = User.objects.get(id=user_id)
 
-        target_user = User.objects.get(id=user_id)
+       leave = Leave.objects.create(
+           user=target_user,
+           leave_type=leave_type,
+           start_leave=start_leave,
+           end_leave=end_leave,
+           half_day=half_day,
+           reason_for_leave=reason,
+           status='approved',
+           is_unpaid=is_unpaid,
+       )
 
-        leave = Leave.objects.create(
-            user=target_user,
-            leave_type=leave_type,
-            start_leave=start_leave,
-            end_leave=end_leave,
-            half_day=half_day,
-            reason_for_leave=reason,
-            status='approved',
-            is_unpaid=is_unpaid,
-        )
+       leave._original_end = end_leave
+       self._update_balance(leave)
 
-        # Sauvegarde end_leave original avant le split
-        leave._original_end = end_leave
-        self._update_balance(leave)
+       messages.success(request, f'Leave filed and approved for {target_user.first_name} {target_user.last_name}.')
+       return redirect('hr_file_leave')
 
-        messages.success(request, f'Leave filed and approved for {target_user.first_name} {target_user.last_name}.')
-        return redirect('hr_file_leave')
+   def _get_split_date(self, leave, paid_days):
+       count = 0
+       current = leave.start_leave
+       last_paid = leave.start_leave
+       while current <= leave._original_end:
+           if current.weekday() < 5:
+               count += 1
+               if count <= paid_days:
+                   last_paid = current
+               else:
+                   break
+           current += timedelta(days=1)
+       return last_paid
 
-    def _get_split_date(self, leave, paid_days):
-        """Trouve la date apres laquelle le leave devient unpaid.
-        paid_days = nombre de jours ouvrables paid.
-        Retourne le dernier jour paid."""
+   def _update_balance(self, leave):
+       if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
+           count = 0.5
+       else:
+           count = 0
+           current = leave.start_leave
+           while current <= leave._original_end:
+               if current.weekday() < 5:
+                   count += 1
+               current += timedelta(days=1)
+
+       if leave.user.role in ['teacher', 'head_of_department']:
+           leave_type = 'vacation_leave'
+       else:
+           leave_type = leave.leave_type
+
+       NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
+
+       balance, created = LeaveBalance.objects.get_or_create(
+           user=leave.user,
+           leave_type=leave_type,
+           defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
+       )
+
+       if leave.user.role in ['teacher', 'head_of_department']:
+           remaining_before = float(balance.days_remaining)
+
+           if count > remaining_before and remaining_before > 0:
+               paid_days = remaining_before
+               unpaid_days = count - remaining_before
+
+               split_date = self._get_split_date(leave, int(paid_days))
+               original_end = leave._original_end
+
+               leave.end_leave = split_date
+               leave.is_unpaid = False
+               leave.save()
+
+               next_day = split_date + timedelta(days=1)
+               while next_day.weekday() >= 5:
+                   next_day += timedelta(days=1)
+
+               Leave.objects.create(
+                   user=leave.user,
+                   leave_type=leave.leave_type,
+                   start_leave=next_day,
+                   end_leave=original_end,
+                   half_day='none',
+                   reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                   status='approved',
+                   is_unpaid=True,
+               )
+
+               balance.days_used = float(balance.days_used) + paid_days
+               balance.days_remaining = 0
+               balance.save()
+
+               balance.days_used = float(balance.days_used) + unpaid_days
+               balance.days_remaining = float(balance.days_remaining) - unpaid_days
+               balance.save()
+
+           elif remaining_before <= 0:
+
+               leave.is_unpaid = True
+               leave.save()
+               balance.days_used = float(balance.days_used) + count
+               balance.days_remaining = float(balance.days_remaining) - count
+               balance.save()
+
+           else:
+               balance.days_used = float(balance.days_used) + count
+               balance.days_remaining = float(balance.days_remaining) - count
+               balance.save()
+
+       elif leave.user.role == 'admin':
+           remaining_before = float(balance.days_remaining)
+           no_limit = leave_type in NO_LIMIT_TYPES
+
+           if no_limit:
+               balance.days_used = float(balance.days_used) + count
+               balance.save()
+               return
+
+           elif count > remaining_before and remaining_before > 0:
+
+               paid_days = remaining_before
+               unpaid_days = count - remaining_before
+
+               split_date = self._get_split_date(leave, int(paid_days))
+               original_end = leave._original_end
+
+               leave.end_leave = split_date
+               leave.is_unpaid = False
+               leave.save()
+
+               next_day = split_date + timedelta(days=1)
+               while next_day.weekday() >= 5:
+                   next_day += timedelta(days=1)
+
+               Leave.objects.create(
+                   user=leave.user,
+                   leave_type=leave.leave_type,
+                   start_leave=next_day,
+                   end_leave=original_end,
+                   half_day='none',
+                   reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                   status='approved',
+                   is_unpaid=True,
+               )
+
+               balance.days_used = float(balance.days_used) + paid_days
+               balance.days_remaining = 0
+               balance.save()
+
+               balance.days_used = float(balance.days_used) + unpaid_days
+               balance.days_remaining = float(balance.days_remaining) - unpaid_days
+               balance.save()
+
+           elif remaining_before <= 0:
+               leave.is_unpaid = True
+               leave.save()
+               balance.days_used = float(balance.days_used) + count
+               balance.days_remaining = float(balance.days_remaining) - count
+               balance.save()
+
+           else:
+               balance.days_used = float(balance.days_used) + count
+               balance.days_remaining = float(balance.days_remaining) - count
+               balance.save()
+
+       else:
+           balance.days_used = float(balance.days_used) + count
+           balance.days_remaining = float(balance.days_remaining) - count
+           balance.save()
+
+class ApproveLeaveDashboardView(LoginRequiredMixin, View):
+   def post(self, request, leave_id):
+       leave = Leave.objects.get(id=leave_id)
+       user = leave.user
+       if request.user.role == 'head_of_department' and leave.status == 'pending_hod':
+           leave.status = 'pending_hos'
+           leave.save()
+           for hos in User.objects.filter(role='head_of_school'):
+               self._send_email(
+                   to=hos.email,
+                   subject=f'Leave Request Pending Your Approval — {user.first_name} {user.last_name}',
+                   body=(
+                       f'Hello,\n\n'
+                       f'{user.first_name} {user.last_name} has requested {leave.leave_type.replace("_", " ").title()} leave '
+                       f'from {leave.start_leave} to {leave.end_leave}.\n\n'
+                       f'Reason: {leave.reason_for_leave}\n\n'
+                       f'This request has been approved by the Head of Department '
+                       f'and is now pending your approval. Please log in to your dashboard to approve or reject.\n\n'
+                       f'GESM Leave Management'
+                   ),
+                   leave=leave,
+               )
+
+       # HOS approuve → approved + email prof + HOD + HOS + HR + scheduling
+       elif request.user.role == 'head_of_school' and leave.status == 'pending_hos':
+           leave.status = 'approved'
+           leave.is_unpaid = request.POST.get('is_unpaid') == '1'
+           leave._original_end = leave.end_leave
+           leave.save()
+           self._update_balance(leave)
+
+           recipients = set()
+           recipients.add(user.email)
+           if user.superior:
+               recipients.add(user.superior.email)
+           for hos in User.objects.filter(role='head_of_school'):
+               recipients.add(hos.email)
+           for hr in User.objects.filter(role='hr'):
+               recipients.add(hr.email)
+           for sched in User.objects.filter(role='scheduling_team'):
+               recipients.add(sched.email)
+
+           for email_addr in recipients:
+               self._send_email(
+                   to=email_addr,
+                   subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+                   body=(
+                       f'Hello,\n\n'
+                       f'{user.first_name} {user.last_name} leave request for '
+                       f'{leave.leave_type.replace("_", " ").title()} '
+                       f'from {leave.start_leave} to {leave.end_leave} '
+                       f'has been fully approved.\n\n'
+                       f'GESM Leave Management'
+                   ),
+               )
+
+       # HOA approves → approved + email admin + HOA + HR
+       elif request.user.role == 'head_of_admin' and leave.status == 'pending_hoa':
+           leave.status = 'approved'
+           leave.is_unpaid = request.POST.get('is_unpaid') == '1'
+           leave._original_end = leave.end_leave
+           leave.save()
+           self._update_balance(leave)
+
+           recipients = set()
+           recipients.add(user.email)
+           for hoa in User.objects.filter(role='head_of_admin'):
+               recipients.add(hoa.email)
+           for hr in User.objects.filter(role='hr'):
+               recipients.add(hr.email)
+
+           for email_addr in recipients:
+               self._send_email(
+                   to=email_addr,
+                   subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+                   body=(
+                       f'Hello,\n\n'
+                       f'{user.first_name} {user.last_name} leave request for '
+                       f'{leave.leave_type.replace("_", " ").title()} '
+                       f'from {leave.start_leave} to {leave.end_leave} '
+                       f'has been approved by the Head of Administration.\n\n'
+                       f'GESM Leave Management'
+                   ),
+               )
+
+       elif request.user.role == 'hr':
+           leave.status = 'approved'
+           leave._original_end = leave.end_leave
+           leave.save()
+           self._update_balance(leave)
+
+           self._send_email(
+               to=user.email,
+               subject=f'Leave Request Approved — {user.first_name} {user.last_name}',
+               body=(
+                   f'Hello {user.first_name},\n\n'
+                   f'Your {leave.leave_type.replace("_", " ").title()} leave request '
+                   f'from {leave.start_leave} to {leave.end_leave} '
+                   f'has been approved by HR.\n\n'
+                   f'GESM Leave Management'
+               ),
+           )
+
+       return redirect('dashboard')
+
+   def _send_email(self, to, subject, body, leave=None):
+       email = EmailMessage(
+           subject=subject,
+           body=body,
+           from_email=settings.DEFAULT_FROM_EMAIL,
+           to=[to],
+       )
+       if leave and leave.pdf_attachment:
+           leave.pdf_attachment.seek(0)
+           email.attach(
+               leave.pdf_attachment.name,
+               leave.pdf_attachment.read(),
+               'application/pdf'
+           )
+       email.send()
+
+   def _get_split_date(self, leave, paid_days):
+       count = 0
+       current = leave.start_leave
+       last_paid = leave.start_leave
+       while current <= leave._original_end:
+           if current.weekday() < 5:
+               count += 1
+               if count <= paid_days:
+                   last_paid = current
+               else:
+                   break
+           current += timedelta(days=1)
+       return last_paid
+
+   def _update_balance(self, leave):
+    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
+        count = 0.5
+    else:
         count = 0
         current = leave.start_leave
-        last_paid = leave.start_leave
         while current <= leave._original_end:
             if current.weekday() < 5:
                 count += 1
-                if count <= paid_days:
-                    last_paid = current
-                else:
-                    break
             current += timedelta(days=1)
-        return last_paid
 
-    def _update_balance(self, leave):
-        # Calcul du nombre de jours ouvrables du leave
-        if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave._original_end:
-            count = 0.5
-        else:
-            count = 0
-            current = leave.start_leave
-            while current <= leave._original_end:
-                if current.weekday() < 5:
-                    count += 1
-                current += timedelta(days=1)
+    if leave.user.role in ['teacher', 'head_of_department']:
+        leave_type = 'vacation_leave'
+    else:
+        leave_type = leave.leave_type
 
-        if leave.user.role in ['teacher', 'head_of_department']:
-            leave_type = 'vacation_leave'
-        else:
-            leave_type = leave.leave_type
+    NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
 
-        balance, created = LeaveBalance.objects.get_or_create(
-            user=leave.user,
-            leave_type=leave_type,
-            defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
-        )
+    balance, created = LeaveBalance.objects.get_or_create(
+        user=leave.user,
+        leave_type=leave_type,
+        defaults={'total_days': 30, 'days_used': 0, 'days_remaining': 30, 'carried_over': 0}
+    )
 
-        # Pour teacher/HOD : verifier si depassement et splitter si necessaire
-        if leave.user.role in ['teacher', 'head_of_department']:
-            remaining_before = float(balance.days_remaining)
+    if leave.user.role in ['teacher', 'head_of_department']:
+        remaining_before = float(balance.days_remaining)
 
-            if count > remaining_before and remaining_before > 0:
-                # Depassement partiel : split en 2 leaves
-                paid_days = remaining_before
-                unpaid_days = count - remaining_before
+        if count > remaining_before and remaining_before > 0:
+            paid_days = remaining_before
+            unpaid_days = count - remaining_before
 
-                # Calcule la date de split
-                split_date = self._get_split_date(leave, int(paid_days))
+            split_date = self._get_split_date(leave, int(paid_days))
+            original_end = leave._original_end
 
-                # Sauvegarde la end_leave originale avant modification
-                original_end = leave._original_end
+            leave.end_leave = split_date
+            leave.is_unpaid = False
+            leave.save()
 
-                # Modifie le leave original : seulement les jours paid
-                leave.end_leave = split_date
-                leave.is_unpaid = False
-                leave.save()
+            next_day = split_date + timedelta(days=1)
+            while next_day.weekday() >= 5:
+                next_day += timedelta(days=1)
 
-                # Cree le nouveau leave unpaid pour les jours restants
-                next_day = split_date + timedelta(days=1)
-                # Avance au prochain jour ouvre si weekend
-                while next_day.weekday() >= 5:
-                    next_day += timedelta(days=1)
+            Leave.objects.create(
+                user=leave.user,
+                leave_type=leave.leave_type,
+                start_leave=next_day,
+                end_leave=original_end,
+                half_day='none',
+                reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                status='approved',
+                is_unpaid=True,
+            )
 
-                Leave.objects.create(
-                    user=leave.user,
-                    leave_type=leave.leave_type,
-                    start_leave=next_day,
-                    end_leave=original_end,
-                    half_day='none',
-                    reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
-                    status='approved',
-                    is_unpaid=True,
-                )
+            balance.days_used = float(balance.days_used) + paid_days
+            balance.days_remaining = 0
+            balance.save()
 
-                # Met a jour la balance : paid_days utilises
-                balance.days_used = float(balance.days_used) + paid_days
-                balance.days_remaining = 0
-                balance.save()
+            balance.days_used = float(balance.days_used) + unpaid_days
+            balance.days_remaining = float(balance.days_remaining) - unpaid_days
+            balance.save()
 
-                # Met a jour la balance pour les jours unpaid
-                balance.days_used = float(balance.days_used) + unpaid_days
-                balance.days_remaining = float(balance.days_remaining) - unpaid_days
-                balance.save()
-
-            elif remaining_before <= 0:
-                # Tout est unpaid
-                leave.is_unpaid = True
-                leave.save()
-                balance.days_used = float(balance.days_used) + count
-                balance.days_remaining = float(balance.days_remaining) - count
-                balance.save()
-
-            else:
-                # Pas de depassement : tout est paid
-                leave.is_unpaid = False
-                leave.save()
-                balance.days_used = float(balance.days_used) + count
-                balance.days_remaining = float(balance.days_remaining) - count
-                balance.save()
-
-        else:
-            # Admin/HR : pas de split, logique normale
+        elif remaining_before <= 0:
+            leave.is_unpaid = True
+            leave.save()
             balance.days_used = float(balance.days_used) + count
             balance.days_remaining = float(balance.days_remaining) - count
             balance.save()
+
+        else:
+            balance.days_used = float(balance.days_used) + count
+            balance.days_remaining = float(balance.days_remaining) - count
+            balance.save()
+
+    elif leave.user.role == 'admin':
+        remaining_before = float(balance.days_remaining)
+        no_limit = leave_type in NO_LIMIT_TYPES
+
+        if no_limit:
+            balance.days_used = float(balance.days_used) + count
+            balance.save()
+            return
+
+        elif count > remaining_before and remaining_before > 0:
+            paid_days = remaining_before
+            unpaid_days = count - remaining_before
+
+            split_date = self._get_split_date(leave, int(paid_days))
+            original_end = leave._original_end
+
+            leave.end_leave = split_date
+            leave.is_unpaid = False
+            leave.save()
+
+            next_day = split_date + timedelta(days=1)
+            while next_day.weekday() >= 5:
+                next_day += timedelta(days=1)
+
+            Leave.objects.create(
+                user=leave.user,
+                leave_type=leave.leave_type,
+                start_leave=next_day,
+                end_leave=original_end,
+                half_day='none',
+                reason_for_leave=leave.reason_for_leave + ' (unpaid portion)',
+                status='approved',
+                is_unpaid=True,
+            )
+
+            balance.days_used = float(balance.days_used) + paid_days
+            balance.days_remaining = 0
+            balance.save()
+
+            balance.days_used = float(balance.days_used) + unpaid_days
+            balance.days_remaining = float(balance.days_remaining) - unpaid_days
+            balance.save()
+
+        elif remaining_before <= 0:
+            leave.is_unpaid = True
+            leave.save()
+            balance.days_used = float(balance.days_used) + count
+            balance.days_remaining = float(balance.days_remaining) - count
+            balance.save()
+
+        else:
+            balance.days_used = float(balance.days_used) + count
+            balance.days_remaining = float(balance.days_remaining) - count
+            balance.save()
+
+    else:
+        balance.days_used = float(balance.days_used) + count
+        balance.days_remaining = float(balance.days_remaining) - count
+        balance.save()

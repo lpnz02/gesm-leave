@@ -2,11 +2,16 @@ from django.contrib.auth.signals import user_logged_in
 from django.dispatch import receiver
 from django.contrib.auth.views import PasswordResetConfirmView
 from django.db.models.signals import post_save
+from accounts.models import User
+from django.core.mail import send_mail
+from django.conf import settings
+
+# ===============================================================================
+# = SIGNAL : Notifies HR via email notification when password is forgotten (login)
+# ===============================================================================
+
 
 def notify_hr_password_reset(sender, request, user, **kwargs):
-    from accounts.models import User
-    from django.core.mail import send_mail
-    from django.conf import settings
     hr_users = User.objects.filter(role='hr', is_active=True)
     for hr in hr_users:
         send_mail(

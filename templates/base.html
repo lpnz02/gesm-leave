@@ -209,7 +209,7 @@
                </a>
                {% endif %}
 
-               {% if request.user.role == 'teacher' or request.user.role == 'admin' or request.user.role == 'hr' or request.user.role == 'head_of_department' %}
+               {% if request.user.role == 'teacher' or request.user.role == 'head_of_department' %}
                <a class="nav-link" href="{% url 'back_to_work' %}">
                    <i class="fas fa-undo"></i> Back to Work
                </a>
@@ -219,6 +219,9 @@
                <a class="nav-link" href="{% url 'pay_slip' %}">
                    <i class="fas fa-file-invoice-dollar"></i> Pay Slip
                </a>
+               {% endif %}
+
+               {% if request.user.role == 'teacher' or request.user.role == 'admin' or request.user.role == 'head_of_department' or request.user.role == 'head_of_school' %}
                <a class="nav-link" href="{% url 'certificate' %}">
                    <i class="fas fa-certificate"></i> Certificate
                </a>

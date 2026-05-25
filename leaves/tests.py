@@ -5,7 +5,7 @@ from django.core import mail
 from datetime import date, timedelta
 from accounts.models import User, Department
 from leaves.models import Leave, LeaveBalance
-import io
+from dashboard.models import BackToWork, PaySlipRequest, CertificateRequest
 
 
 def make_user(username, role, dept=None, superior=None, active=True):
@@ -31,6 +31,9 @@ def make_leave(user, status='pending_hod', leave_type='vacation_leave',
    )
 
 
+# ================================================================
+# LEAVE SUBMISSION TESTS
+# ================================================================
 class LeaveSubmissionTests(TestCase):
    def setUp(self):
        self.client = Client()
@@ -45,7 +48,6 @@ class LeaveSubmissionTests(TestCase):
        self.admin = make_user('admin01', 'admin')
 
    def test_teacher_leave_pending_hod(self):
-       """Teacher leave goes to pending_hod"""
        self.client.login(username='teacher01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'vacation_leave', 'reason_for_leave': 'Vacation',
@@ -58,7 +60,6 @@ class LeaveSubmissionTests(TestCase):
        self.assertEqual(leave.status, 'pending_hod')
 
    def test_admin_leave_pending_hoa(self):
-       """Admin leave goes to pending_hoa"""
        self.client.login(username='admin01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'sick_leave', 'reason_for_leave': 'Sick',
@@ -71,7 +72,6 @@ class LeaveSubmissionTests(TestCase):
        self.assertEqual(leave.status, 'pending_hoa')
 
    def test_hod_leave_pending_hos(self):
-       """HOD leave goes to pending_hos"""
        self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'vacation_leave', 'reason_for_leave': 'Vacation',
@@ -84,7 +84,6 @@ class LeaveSubmissionTests(TestCase):
        self.assertEqual(leave.status, 'pending_hos')
 
    def test_hr_leave_pending_hoa(self):
-       """HR leave goes to pending_hoa"""
        self.client.login(username='hr01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'vacation_leave', 'reason_for_leave': 'Vacation',
@@ -205,7 +204,6 @@ class LeaveSubmissionTests(TestCase):
        self.assertFalse(Leave.objects.filter(id=leave_id).exists())
 
    def test_leave_appears_in_teacher_dashboard_after_submission(self):
-       """Submitted leave appears in teacher dashboard"""
        self.client.login(username='teacher01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'vacation_leave', 'reason_for_leave': 'Vacation',
@@ -219,7 +217,6 @@ class LeaveSubmissionTests(TestCase):
        self.assertEqual(response.context['leaves'].count(), 1)
 
    def test_approved_leave_appears_in_hoa_dashboard(self):
-       """HOA-approved leave appears in admin dashboard"""
        LeaveBalance.objects.create(
            user=self.admin, leave_type='sick_leave',
            total_days=15, days_used=0, days_remaining=15, carried_over=0,
@@ -235,6 +232,9 @@ class LeaveSubmissionTests(TestCase):
        self.assertEqual(len(approved), 1)
 
 
+# ================================================================
+# LEAVE APPROVAL TESTS
+# ================================================================
 class LeaveApprovalTests(TestCase):
    def setUp(self):
        self.client = Client()
@@ -273,15 +273,17 @@ class LeaveApprovalTests(TestCase):
        self.teacher_leave.refresh_from_db()
        self.assertEqual(self.teacher_leave.status, 'approved')
 
-   def test_hos_can_mark_leave_as_unpaid(self):
-       self.teacher_leave.status = 'pending_hos'
-       self.teacher_leave.save()
-       self.client.login(username='hos01', password='TestPass1234!')
+
+   def test_hod_cannot_mark_leave_as_unpaid(self):
+       """HOD does NOT have the right to mark leave as unpaid"""
+       self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[self.teacher_leave.id]), {
            'is_unpaid': '1',
        })
        self.teacher_leave.refresh_from_db()
-       self.assertTrue(self.teacher_leave.is_unpaid)
+       # HOD only moves to pending_hos, is_unpaid must remain False
+       self.assertFalse(self.teacher_leave.is_unpaid)
+       self.assertEqual(self.teacher_leave.status, 'pending_hos')
 
    def test_hos_approve_hod_leave(self):
        self.client.login(username='hos01', password='TestPass1234!')
@@ -295,16 +297,39 @@ class LeaveApprovalTests(TestCase):
        self.admin_leave.refresh_from_db()
        self.assertEqual(self.admin_leave.status, 'approved')
 
-   def test_hoa_can_mark_leave_as_unpaid(self):
-       self.client.login(username='hoa01', password='TestPass1234!')
-       self.client.post(reverse('approve_leave', args=[self.admin_leave.id]), {
-           'is_unpaid': '1',
-       })
-       self.admin_leave.refresh_from_db()
-       self.assertTrue(self.admin_leave.is_unpaid)
+   def test_hos_can_mark_leave_as_unpaid_remaining_still_deducted(self):
+    """HOS marks leave unpaid — remaining days ARE deducted (it counts against the quota)"""
+    self.teacher_leave.status = 'pending_hos'
+    self.teacher_leave.save()
+    balance = LeaveBalance.objects.get(
+        user=self.teacher, leave_type='vacation_leave'
+    )
+    remaining_before = float(balance.days_remaining)
+    self.client.login(username='hos01', password='TestPass1234!')
+    self.client.post(reverse('approve_leave', args=[self.teacher_leave.id]), {
+        'is_unpaid': '1',
+    })
+    self.teacher_leave.refresh_from_db()
+    self.assertTrue(self.teacher_leave.is_unpaid)
+    balance.refresh_from_db()
+    # Remaining DOIT avoir diminue
+    self.assertLess(float(balance.days_remaining), remaining_before)
+
+    def test_hoa_can_mark_admin_leave_as_unpaid_remaining_still_deducted(self):
+        """HOA marks admin leave unpaid — remaining days ARE deducted"""
+        balance = LeaveBalance.objects.get(user=self.admin, leave_type='sick_leave')
+        remaining_before = float(balance.days_remaining)
+        self.client.login(username='hoa01', password='TestPass1234!')
+        self.client.post(reverse('approve_leave', args=[self.admin_leave.id]), {
+            'is_unpaid': '1',
+        })
+        self.admin_leave.refresh_from_db()
+        self.assertTrue(self.admin_leave.is_unpaid)
+        balance.refresh_from_db()
+        # Remaining DOIT avoir diminue
+        self.assertLess(float(balance.days_remaining), remaining_before)
 
    def test_hod_reject_with_reason(self):
-       """HOD can reject with a reason message"""
        self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('reject_leave', args=[self.teacher_leave.id]), {
            'rejection_reason': 'Not enough staff available',
@@ -314,7 +339,6 @@ class LeaveApprovalTests(TestCase):
        self.assertEqual(self.teacher_leave.rejection_reason, 'Not enough staff available')
 
    def test_hos_reject_with_reason(self):
-       """HOS can reject with a reason message"""
        self.teacher_leave.status = 'pending_hos'
        self.teacher_leave.save()
        self.client.login(username='hos01', password='TestPass1234!')
@@ -325,7 +349,6 @@ class LeaveApprovalTests(TestCase):
        self.assertEqual(self.teacher_leave.rejection_reason, 'School event conflict')
 
    def test_hoa_reject_with_reason(self):
-       """HOA can reject with a reason message"""
        self.client.login(username='hoa01', password='TestPass1234!')
        self.client.post(reverse('reject_leave', args=[self.admin_leave.id]), {
            'rejection_reason': 'No replacement available',
@@ -334,7 +357,6 @@ class LeaveApprovalTests(TestCase):
        self.assertEqual(self.admin_leave.rejection_reason, 'No replacement available')
 
    def test_hos_cannot_approve_pending_hod_leave(self):
-       """HOS cannot approve leave still at pending_hod"""
        self.client.login(username='hos01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[self.teacher_leave.id]))
        self.teacher_leave.refresh_from_db()
@@ -374,7 +396,71 @@ class LeaveApprovalTests(TestCase):
        self.assertEqual(float(balance.days_used), 0.5)
        self.assertEqual(float(balance.days_remaining), 14.5)
 
+   def test_teacher_leave_auto_split_when_exceeding_quota(self):
+       """Teacher with 5 remaining days takes 10d leave —
+       auto-split into 5d paid + 5d unpaid"""
+       balance = LeaveBalance.objects.get(
+           user=self.teacher, leave_type='vacation_leave'
+       )
+       balance.days_remaining = 5
+       balance.total_days = 30
+       balance.days_used = 25
+       balance.save()
+       leave = Leave.objects.create(
+           user=self.teacher, leave_type='vacation_leave',
+           reason_for_leave='Test split',
+           start_leave=date(2026, 6, 1),
+           end_leave=date(2026, 6, 12),
+           status='pending_hos', half_day='none',
+       )
+       self.client.login(username='hos01', password='TestPass1234!')
+       self.client.post(reverse('approve_leave', args=[leave.id]))
+       leaves = Leave.objects.filter(user=self.teacher, status='approved')
+       self.assertEqual(leaves.count(), 2)
+       paid = leaves.filter(is_unpaid=False).first()
+       unpaid = leaves.filter(is_unpaid=True).first()
+       self.assertIsNotNone(paid)
+       self.assertIsNotNone(unpaid)
 
+   def test_teacher_leave_fully_paid_within_quota(self):
+       """Teacher with 30 remaining days takes 5d leave — fully paid"""
+       leave = Leave.objects.create(
+           user=self.teacher, leave_type='vacation_leave',
+           reason_for_leave='Test paid',
+           start_leave=date(2026, 6, 1),
+           end_leave=date(2026, 6, 5),
+           status='pending_hos', half_day='none',
+       )
+       self.client.login(username='hos01', password='TestPass1234!')
+       self.client.post(reverse('approve_leave', args=[leave.id]))
+       leave.refresh_from_db()
+       self.assertEqual(leave.status, 'approved')
+       self.assertFalse(leave.is_unpaid)
+
+   def test_teacher_leave_fully_unpaid_when_no_remaining(self):
+       """Teacher with 0 remaining days takes leave — fully unpaid"""
+       balance = LeaveBalance.objects.get(
+           user=self.teacher, leave_type='vacation_leave'
+       )
+       balance.days_remaining = 0
+       balance.days_used = 30
+       balance.save()
+       leave = Leave.objects.create(
+           user=self.teacher, leave_type='vacation_leave',
+           reason_for_leave='Test unpaid',
+           start_leave=date(2026, 6, 1),
+           end_leave=date(2026, 6, 5),
+           status='pending_hos', half_day='none',
+       )
+       self.client.login(username='hos01', password='TestPass1234!')
+       self.client.post(reverse('approve_leave', args=[leave.id]))
+       leave.refresh_from_db()
+       self.assertTrue(leave.is_unpaid)
+
+
+# ================================================================
+# LEAVE EMAIL TESTS
+# ================================================================
 class LeaveEmailTests(TestCase):
    def setUp(self):
        self.client = Client()
@@ -398,7 +484,6 @@ class LeaveEmailTests(TestCase):
        )
 
    def test_hod_receives_email_on_teacher_submission(self):
-       """HOD receives email when teacher submits leave"""
        self.client.login(username='teacher01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'vacation_leave', 'reason_for_leave': 'Vacation',
@@ -410,7 +495,6 @@ class LeaveEmailTests(TestCase):
        self.assertIn('hod01@gesm.org', emails_to)
 
    def test_hoa_receives_email_on_admin_submission(self):
-       """HOA receives email when admin submits leave"""
        self.client.login(username='admin01', password='TestPass1234!')
        self.client.post(reverse('submit_leave'), {
            'leave_type': 'sick_leave', 'reason_for_leave': 'Sick',
@@ -422,7 +506,6 @@ class LeaveEmailTests(TestCase):
        self.assertIn('hoa01@gesm.org', emails_to)
 
    def test_hos_receives_email_after_hod_approval(self):
-       """HOS receives email after HOD approves teacher leave"""
        leave = make_leave(self.teacher, status='pending_hod')
        self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[leave.id]))
@@ -430,7 +513,6 @@ class LeaveEmailTests(TestCase):
        self.assertIn('hos01@gesm.org', emails_to)
 
    def test_teacher_receives_email_after_hos_approval(self):
-       """Teacher receives email after HOS fully approves leave"""
        leave = make_leave(self.teacher, status='pending_hos')
        self.client.login(username='hos01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[leave.id]))
@@ -438,15 +520,22 @@ class LeaveEmailTests(TestCase):
        self.assertIn('teacher01@gesm.org', emails_to)
 
    def test_scheduling_team_receives_email_after_hos_approval(self):
-       """Scheduling team receives email after HOS approves teacher leave"""
        leave = make_leave(self.teacher, status='pending_hos')
        self.client.login(username='hos01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[leave.id]))
        emails_to = [m.to[0] for m in mail.outbox]
        self.assertIn('sched01@gesm.org', emails_to)
 
+   def test_scheduling_team_does_not_receive_pdf_attachment(self):
+       """Scheduling team only receives notification — no PDF attachment"""
+       leave = make_leave(self.teacher, status='pending_hos')
+       self.client.login(username='hos01', password='TestPass1234!')
+       self.client.post(reverse('approve_leave', args=[leave.id]))
+       for email in mail.outbox:
+           if self.sched.email in email.to:
+               self.assertEqual(len(email.attachments), 0)
+
    def test_rejection_email_sent_to_teacher(self):
-       """Teacher receives email when their leave is rejected"""
        leave = make_leave(self.teacher, status='pending_hod')
        self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('reject_leave', args=[leave.id]), {
@@ -456,7 +545,6 @@ class LeaveEmailTests(TestCase):
        self.assertIn('teacher01@gesm.org', emails_to)
 
    def test_rejection_reason_in_email(self):
-       """Rejection reason appears in the email body"""
        leave = make_leave(self.teacher, status='pending_hod')
        self.client.login(username='hod01', password='TestPass1234!')
        self.client.post(reverse('reject_leave', args=[leave.id]), {
@@ -466,14 +554,42 @@ class LeaveEmailTests(TestCase):
        self.assertTrue(any('Too many absences' in b for b in bodies))
 
    def test_admin_receives_email_after_hoa_approval(self):
-       """Admin receives email after HOA approves their leave"""
        leave = make_leave(self.admin, status='pending_hoa', leave_type='sick_leave')
        self.client.login(username='hoa01', password='TestPass1234!')
        self.client.post(reverse('approve_leave', args=[leave.id]))
        emails_to = [m.to[0] for m in mail.outbox]
        self.assertIn('admin01@gesm.org', emails_to)
 
+   def test_back_to_work_teacher_sends_email_to_scheduling_hos_hod(self):
+    """Teacher back to work → email to scheduling team + HOS + their HOD only"""
+    self.client.login(username='teacher01', password='TestPass1234!')
+    self.client.post(reverse('back_to_work'), {
+        'full_name': 'Teacher One',
+        'return_date': date.today() + timedelta(days=1),
+        'message': 'Returning from sick leave',
+    })
+    emails_to = [m.to[0] for m in mail.outbox]
+    self.assertIn('sched01@gesm.org', emails_to)
+    self.assertIn('hos01@gesm.org', emails_to)
+    self.assertIn('hod01@gesm.org', emails_to)  
 
+    def test_back_to_work_hod_sends_email_to_scheduling_hos_not_self(self):
+        """HOD back to work → email to scheduling + HOS only, not themselves"""
+        self.client.login(username='hod01', password='TestPass1234!')
+        self.client.post(reverse('back_to_work'), {
+            'full_name': 'HOD One',
+            'return_date': date.today() + timedelta(days=1),
+            'message': '',
+        })
+        emails_to = [m.to[0] for m in mail.outbox]
+        self.assertIn('sched01@gesm.org', emails_to)
+        self.assertIn('hos01@gesm.org', emails_to)
+        self.assertNotIn('hod01@gesm.org', emails_to)
+
+
+# ================================================================
+# LEAVE BALANCE TESTS
+# ================================================================
 class LeaveBalanceTests(TestCase):
    def setUp(self):
        self.client = Client()
@@ -503,6 +619,17 @@ class LeaveBalanceTests(TestCase):
        })
        balance = LeaveBalance.objects.get(user=self.admin, leave_type='vacation_leave')
        self.assertEqual(float(balance.days_remaining), 20.0)
+
+   def test_hr_can_adjust_teacher_remaining_days(self):
+       """HR can set remaining days for teacher — new feature"""
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('adjust_balance'), {
+           'user_id': self.teacher.id,
+           'balance_type': 'teacher',
+           'days_remaining': 15,
+       })
+       balance = LeaveBalance.objects.get(user=self.teacher, leave_type='vacation_leave')
+       self.assertEqual(float(balance.days_remaining), 15.0)
 
    def test_non_hr_cannot_adjust_balance(self):
        self.client.login(username='teacher01', password='TestPass1234!')
@@ -537,6 +664,36 @@ class LeaveBalanceTests(TestCase):
        self.client.login(username='hr01', password='TestPass1234!')
        self.client.post(reverse('reset_balances'))
        self.assertEqual(Leave.objects.count(), 0)
+
+   def test_reset_clears_back_to_work_history(self):
+       """Reset clears BackToWork history"""
+       teacher2 = make_user('teacher02', 'teacher')
+       BackToWork.objects.create(
+           user=teacher2, full_name='Teacher Two',
+           return_date=date.today(), message='',
+       )
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(BackToWork.objects.count(), 0)
+
+   def test_reset_clears_pay_slip_history(self):
+       """Reset clears PaySlipRequest history"""
+       PaySlipRequest.objects.create(
+           user=self.teacher, full_name='Teacher One', month='May 2026',
+       )
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(PaySlipRequest.objects.count(), 0)
+
+   def test_reset_clears_certificate_history(self):
+       """Reset clears CertificateRequest history"""
+       CertificateRequest.objects.create(
+           user=self.teacher, full_name='Teacher One',
+           purpose='Visa', with_salary=False,
+       )
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(CertificateRequest.objects.count(), 0)
 
    def test_non_hr_cannot_reset_balances(self):
        self.client.login(username='teacher01', password='TestPass1234!')
@@ -591,3 +748,100 @@ class LeaveBalanceTests(TestCase):
        self.client.login(username='teacher01', password='TestPass1234!')
        self.client.post(reverse('delete_leave', args=[leave.id]))
        self.assertTrue(Leave.objects.filter(id=leave.id).exists())
+
+
+# ================================================================
+# HR FILE LEAVE TESTS — nouveau
+# ================================================================
+class HRFileLeaveTests(TestCase):
+   def setUp(self):
+       self.client = Client()
+       self.hr = make_user('hr01', 'hr')
+       self.teacher = make_user('teacher01', 'teacher')
+       self.hod = make_user('hod01', 'head_of_department')
+       self.admin = make_user('admin01', 'admin')
+       LeaveBalance.objects.create(
+           user=self.teacher, leave_type='vacation_leave',
+           total_days=30, days_used=0, days_remaining=30, carried_over=0,
+       )
+       LeaveBalance.objects.create(
+           user=self.hod, leave_type='vacation_leave',
+           total_days=30, days_used=0, days_remaining=30, carried_over=0,
+       )
+       LeaveBalance.objects.create(
+           user=self.admin, leave_type='sick_leave',
+           total_days=15, days_used=0, days_remaining=15, carried_over=0,
+       )
+
+   def test_hr_can_file_leave_for_teacher(self):
+       """HR can file leave on behalf of teacher — auto-approved"""
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.teacher.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-01',
+           'end_leave': '2026-06-05',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       leave = Leave.objects.filter(user=self.teacher).first()
+       self.assertIsNotNone(leave)
+       self.assertEqual(leave.status, 'approved')
+
+   def test_hr_filed_leave_appears_in_teacher_dashboard(self):
+       """HR-filed leave appears in teacher's dashboard"""
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.teacher.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-01',
+           'end_leave': '2026-06-05',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       self.client.login(username='teacher01', password='TestPass1234!')
+       response = self.client.get(reverse('dashboard'))
+       leaves = response.context['leaves']
+       self.assertEqual(leaves.filter(status='approved').count(), 1)
+
+   def test_hr_file_leave_auto_split_when_exceeding_quota(self):
+       """HR-filed leave auto-splits when exceeding teacher quota"""
+       balance = LeaveBalance.objects.get(
+           user=self.teacher, leave_type='vacation_leave'
+       )
+       balance.days_remaining = 5
+       balance.days_used = 25
+       balance.save()
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.teacher.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-01',
+           'end_leave': '2026-06-12',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       leaves = Leave.objects.filter(user=self.teacher, status='approved')
+       self.assertEqual(leaves.count(), 2)
+       self.assertTrue(leaves.filter(is_unpaid=True).exists())
+       self.assertTrue(leaves.filter(is_unpaid=False).exists())
+
+   def test_non_hr_cannot_file_leave(self):
+       """Only HR can access hr_file_leave"""
+       self.client.login(username='teacher01', password='TestPass1234!')
+       response = self.client.get(reverse('hr_file_leave'))
+       self.assertRedirects(response, reverse('dashboard'))
+
+   def test_hr_can_file_leave_for_hod(self):
+       self.client.login(username='hr01', password='TestPass1234!')
+       self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.hod.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-01',
+           'end_leave': '2026-06-03',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       leave = Leave.objects.filter(user=self.hod).first()
+       self.assertIsNotNone(leave)
+       self.assertEqual(leave.status, 'approved')

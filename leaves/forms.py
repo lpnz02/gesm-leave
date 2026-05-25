@@ -1,6 +1,11 @@
 from django import forms
 from .models import Leave
 
+
+# ==========================
+# Leave Forms (submit leave)
+# ==========================
+
 class LeaveRequestForm(forms.ModelForm):
     class Meta:
         model = Leave

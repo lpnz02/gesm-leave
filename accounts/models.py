@@ -1,7 +1,12 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-
 import uuid
+
+
+# =============================================================================
+#  DIFFEERENT MODELS : User (defines different possible roles), idem Department
+# =============================================================================
+
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -30,8 +35,8 @@ class User(AbstractUser):
         blank=True,
         related_name='subordinates'
     )
-    is_approved = models.BooleanField(default=False)  # approuvé par HR
-    is_email_verified = models.BooleanField(default=False)  # email confirmé
+    is_approved = models.BooleanField(default=False)  # approved by HR
+    is_email_verified = models.BooleanField(default=False)  # email verified
     email_verification_token = models.UUIDField(default=uuid.uuid4, editable=False)
 
     def __str__(self):

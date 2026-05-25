@@ -7,6 +7,11 @@ from .forms import LeaveRequestForm
 from .models import Leave, LeaveBalance
 from accounts.models import User
 
+# ==========================================================================
+# class SubmitLeaveView(LoginRequiredMixin, View): redirects to HTML and URL
+# class LeaveSubmittedView(View): email send
+# ==========================================================================
+
 
 class SubmitLeaveView(LoginRequiredMixin, View):
     def get(self, request):
@@ -59,7 +64,6 @@ class SubmitLeaveView(LoginRequiredMixin, View):
         return render(request, 'leaves/submit_leave.html', {'form': form})
 
     def send_notification_email(self, leave, recipient, pdf_file=None):
-        # formatage half day pour l'email
         if leave.half_day == 'morning':
             duration = 'Morning only (half day)'
         elif leave.half_day == 'afternoon':

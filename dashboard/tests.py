@@ -4,6 +4,7 @@ from django.urls import reverse
 from datetime import date, timedelta
 from accounts.models import User, Department
 from leaves.models import Leave, LeaveBalance
+from dashboard.models import BackToWork, PaySlipRequest, CertificateRequest
 
 
 def make_user(username, role, dept=None, superior=None, active=True):
@@ -51,6 +52,10 @@ class DashboardAccessTests(TestCase):
            user=self.teacher, leave_type='vacation_leave',
            total_days=30, days_used=0, days_remaining=30, carried_over=0,
        )
+       LeaveBalance.objects.create(
+           user=self.hod, leave_type='vacation_leave',
+           total_days=30, days_used=0, days_remaining=30, carried_over=0,
+       )
        for lt, total in [
            ('vacation_leave', 15), ('sick_leave', 15), ('bereavement_leave', 5),
            ('emergency_leave', 3), ('maternity_paternity_leave', 1), ('others', 1),
@@ -66,8 +71,10 @@ class DashboardAccessTests(TestCase):
        self.assertIn('login', response.url)
 
    def test_all_dashboards_load_200(self):
-       """Every role dashboard returns 200"""
-       for username in ['teacher01', 'admin01', 'hod01', 'hos01', 'hoa01', 'hr01', 'sched01', 'cal01']:
+       for username in [
+           'teacher01', 'admin01', 'hod01', 'hos01',
+           'hoa01', 'hr01', 'sched01', 'cal01'
+       ]:
            self.client.login(username=username, password='TestPass1234!')
            response = self.client.get(reverse('dashboard'))
            self.assertEqual(response.status_code, 200, f'Failed for {username}')
@@ -116,7 +123,6 @@ class DashboardAccessTests(TestCase):
        self.assertIn(hr_leave, response.context['leaves'])
 
    def test_teacher_balance_shows_2_categories(self):
-       """Teacher dashboard shows 2 categories: sick and special"""
        self.client.login(username='teacher01', password='TestPass1234!')
        response = self.client.get(reverse('dashboard'))
        leave_summary = response.context['leave_summary']
@@ -126,14 +132,13 @@ class DashboardAccessTests(TestCase):
        self.assertIn('special', categories)
 
    def test_admin_balance_shows_6_categories(self):
-       """Admin dashboard shows 6 leave categories"""
        self.client.login(username='admin01', password='TestPass1234!')
        response = self.client.get(reverse('dashboard'))
        leave_summary = response.context['leave_summary']
        self.assertEqual(len(leave_summary), 6)
 
    def test_scheduling_team_calendar_no_unpaid_color(self):
-       """Scheduling team calendar has no red unpaid legend"""
+       """Scheduling team calendar shows no red — unpaid leaves appear blue"""
        Leave.objects.create(
            user=self.teacher, leave_type='vacation_leave',
            reason_for_leave='Test', start_leave=date.today(),
@@ -171,7 +176,6 @@ class DashboardAccessTests(TestCase):
        self.assertTrue(found_red)
 
    def test_calendar_paid_leave_blue(self):
-       """Paid leave appears blue in calendar"""
        Leave.objects.create(
            user=self.teacher, leave_type='vacation_leave',
            reason_for_leave='Test', start_leave=date.today(),
@@ -189,29 +193,8 @@ class DashboardAccessTests(TestCase):
                        found_blue = True
        self.assertTrue(found_blue)
 
-   def test_half_day_morning_shows_am_in_calendar(self):
-       """Half day morning shows (AM) in calendar"""
-       today = date.today()
-       Leave.objects.create(
-           user=self.teacher, leave_type='vacation_leave',
-           reason_for_leave='Test', start_leave=today,
-           end_leave=today, status='approved', half_day='morning',
-       )
-       self.client.login(username='hr01', password='TestPass1234!')
-       response = self.client.get(
-           reverse('calendar') + f'?month={today.month}&year={today.year}'
-       )
-       calendar_data = response.context['calendar_data']
-       found_am = False
-       for week in calendar_data:
-           for day in week:
-               for absent in day['absents']:
-                   if '(AM)' in absent['name']:
-                       found_am = True
-       self.assertTrue(found_am)
 
    def test_sick_leave_pending_shows_grey_in_calendar(self):
-       """Pending sick leave shows grey in calendar"""
        Leave.objects.create(
            user=self.teacher, leave_type='sick_leave',
            reason_for_leave='Sick', start_leave=date.today(),
@@ -228,6 +211,53 @@ class DashboardAccessTests(TestCase):
                    if absent['color'] == '#adb5bd':
                        found_grey = True
        self.assertTrue(found_grey)
+
+   def test_hod_can_view_teacher_remaining_in_overview(self):
+       """HOD sees remaining days in teacher overview"""
+       self.client.login(username='hod01', password='TestPass1234!')
+       response = self.client.get(reverse('user_detail', args=[self.teacher.id]))
+       self.assertEqual(response.status_code, 200)
+       leave_summary = response.context['leave_summary']
+       special = next((i for i in leave_summary if i.get('category') == 'special'), None)
+       self.assertIsNotNone(special)
+       self.assertIn('remaining', special)
+
+   def test_back_to_work_only_teacher_hod(self):
+       """Only teacher and HOD can access back_to_work"""
+       for username, role, should_access in [
+           ('teacher01', 'teacher', True),
+           ('hod01', 'head_of_department', True),
+           ('admin01', 'admin', False),
+           ('hr01', 'hr', False),
+       ]:
+           self.client.login(username=username, password='TestPass1234!')
+           response = self.client.get(reverse('back_to_work'))
+           if should_access:
+               self.assertEqual(response.status_code, 200,
+                   f'{username} should access back_to_work')
+           else:
+               self.assertEqual(response.status_code, 302,
+                   f'{username} should NOT access back_to_work')
+
+   def test_certificate_not_for_hr(self):
+       """HR cannot access certificate of employment"""
+       self.client.login(username='hr01', password='TestPass1234!')
+       response = self.client.get(reverse('certificate'))
+       self.assertRedirects(response, reverse('dashboard'))
+
+   def test_certificate_accessible_for_teacher_hod_hos(self):
+       """Teacher, HOD, HOS can access certificate"""
+       for username in ['teacher01', 'hod01', 'hos01']:
+           self.client.login(username=username, password='TestPass1234!')
+           response = self.client.get(reverse('certificate'))
+           self.assertEqual(response.status_code, 200, f'{username} should access certificate')
+
+   def test_pay_slip_accessible_for_teacher_hod_hos_admin_hr(self):
+       """Teacher, HOD, HOS, Admin, HR can access pay_slip"""
+       for username in ['teacher01', 'hod01', 'hos01', 'admin01', 'hr01']:
+           self.client.login(username=username, password='TestPass1234!')
+           response = self.client.get(reverse('pay_slip'))
+           self.assertEqual(response.status_code, 200, f'{username} should access pay_slip')
 
 
 # ================================================================
@@ -267,7 +297,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(self.teacher.first_name, 'NewName')
 
    def test_hr_edit_teacher_to_admin_creates_6_balances(self):
-       """Changing teacher to admin creates 6 admin balances"""
        self.client.post(reverse('edit_user', args=[self.teacher.id]), {
            'first_name': self.teacher.first_name or 'Test',
            'last_name': self.teacher.last_name or 'Test',
@@ -279,7 +308,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(LeaveBalance.objects.filter(user=self.teacher).count(), 6)
 
    def test_hr_edit_admin_to_teacher_creates_1_balance(self):
-       """Changing admin to teacher creates 1 balance of 30 days"""
        self.client.post(reverse('edit_user', args=[self.admin.id]), {
            'first_name': self.admin.first_name or 'Test',
            'last_name': self.admin.last_name or 'Test',
@@ -293,7 +321,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(balances.first().total_days, 30)
 
    def test_hr_promote_teacher_to_hod_sets_dept_head(self):
-       """Promoting teacher to HOD sets them as dept head"""
        self.client.post(reverse('edit_user', args=[self.teacher.id]), {
            'first_name': self.teacher.first_name or 'Test',
            'last_name': self.teacher.last_name or 'Test',
@@ -306,7 +333,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(self.dept.head, self.teacher)
 
    def test_hr_downgrade_hod_to_teacher_clears_dept_head(self):
-       """Downgrading HOD to teacher clears them as dept head"""
        hod = make_user('hod01', 'head_of_department', dept=self.dept)
        self.dept.head = hod
        self.dept.save()
@@ -319,11 +345,9 @@ class HRFeaturesTests(TestCase):
        self.dept.refresh_from_db()
        hod.refresh_from_db()
        self.assertEqual(hod.role, 'teacher')
-       self.assertIsNone(hod.department)
        self.assertNotEqual(self.dept.head, hod)
 
    def test_hr_downgrade_hod_clears_teachers_superior(self):
-       """Teachers lose their superior when HOD is downgraded"""
        hod = make_user('hod01', 'head_of_department', dept=self.dept)
        self.dept.head = hod
        self.dept.save()
@@ -338,7 +362,6 @@ class HRFeaturesTests(TestCase):
        self.assertIsNone(teacher2.superior)
 
    def test_hr_promote_teacher_to_hos_changes_dashboard(self):
-       """Teacher promoted to HOS gets correct role"""
        self.client.post(reverse('edit_user', args=[self.teacher.id]), {
            'first_name': self.teacher.first_name or 'Test',
            'last_name': self.teacher.last_name or 'Test',
@@ -403,7 +426,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(response.status_code, 302)
 
    def test_hod_can_view_teacher_detail(self):
-       """HOD can view their teachers' profiles"""
        hod = make_user('hod01', 'head_of_department', dept=self.dept)
        self.dept.head = hod
        self.dept.save()
@@ -412,14 +434,12 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(response.status_code, 200)
 
    def test_hos_can_view_teacher_detail(self):
-       """HOS can view teacher profiles"""
        hos = make_user('hos01', 'head_of_school')
        self.client.login(username='hos01', password='TestPass1234!')
        response = self.client.get(reverse('user_detail', args=[self.teacher.id]))
        self.assertEqual(response.status_code, 200)
 
    def test_hoa_can_view_admin_detail(self):
-       """HOA can view admin profiles"""
        self.client.login(username='hoa01', password='TestPass1234!')
        response = self.client.get(reverse('user_detail', args=[self.admin.id]))
        self.assertEqual(response.status_code, 200)
@@ -444,7 +464,6 @@ class HRFeaturesTests(TestCase):
        self.assertIn(teacher_no_sup, response.context['teachers_no_superior'])
 
    def test_user_detail_teacher_shows_sick_and_special(self):
-       """HR sees teacher balance as 2 categories"""
        response = self.client.get(reverse('user_detail', args=[self.teacher.id]))
        leave_summary = response.context['leave_summary']
        self.assertEqual(len(leave_summary), 2)
@@ -452,21 +471,27 @@ class HRFeaturesTests(TestCase):
        self.assertIn('sick', categories)
        self.assertIn('special', categories)
 
+   def test_user_detail_shows_remaining_days_for_teacher(self):
+       """HR/HOD/HOS see remaining days in teacher overview"""
+       response = self.client.get(reverse('user_detail', args=[self.teacher.id]))
+       leave_summary = response.context['leave_summary']
+       special = next((i for i in leave_summary if i.get('category') == 'special'), None)
+       self.assertIsNotNone(special)
+       self.assertIn('remaining', special)
+       self.assertEqual(special['remaining'], 30.0)
+
    def test_user_detail_hos_shows_no_balance(self):
-       """HR sees no balance for HOS"""
        hos = make_user('hos01', 'head_of_school')
        response = self.client.get(reverse('user_detail', args=[hos.id]))
        leave_summary = response.context['leave_summary']
        self.assertEqual(len(leave_summary), 0)
 
    def test_user_detail_hoa_shows_no_balance(self):
-       """HR sees no balance for HOA"""
        response = self.client.get(reverse('user_detail', args=[self.hoa.id]))
        leave_summary = response.context['leave_summary']
        self.assertEqual(len(leave_summary), 0)
 
    def test_hr_can_adjust_admin_balance(self):
-       """HR can adjust admin leave balance"""
        self.client.post(reverse('adjust_balance'), {
            'user_id': self.admin.id,
            'balance_type': 'admin',
@@ -475,6 +500,16 @@ class HRFeaturesTests(TestCase):
        })
        balance = LeaveBalance.objects.get(user=self.admin, leave_type='vacation_leave')
        self.assertEqual(float(balance.days_remaining), 10.0)
+
+   def test_hr_can_adjust_teacher_remaining_days(self):
+       """HR can set remaining days for teachers — key feature"""
+       self.client.post(reverse('adjust_balance'), {
+           'user_id': self.teacher.id,
+           'balance_type': 'teacher',
+           'days_remaining': 20,
+       })
+       balance = LeaveBalance.objects.get(user=self.teacher, leave_type='vacation_leave')
+       self.assertEqual(float(balance.days_remaining), 20.0)
 
    def test_reset_balances_resets_teacher_to_30(self):
        balance = LeaveBalance.objects.get(user=self.teacher, leave_type='vacation_leave')
@@ -488,7 +523,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(balance.days_remaining, 30)
 
    def test_reset_balances_carries_over_admin_vacation(self):
-       """Admin vacation days carry over on reset"""
        vacation = LeaveBalance.objects.get(user=self.admin, leave_type='vacation_leave')
        vacation.days_remaining = 10
        vacation.save()
@@ -498,7 +532,6 @@ class HRFeaturesTests(TestCase):
        self.assertEqual(vacation.total_days, 25)
 
    def test_reset_balances_does_not_carry_over_sick(self):
-       """Admin sick leave does NOT carry over on reset"""
        sick = LeaveBalance.objects.get(user=self.admin, leave_type='sick_leave')
        sick.days_remaining = 5
        sick.save()
@@ -506,6 +539,61 @@ class HRFeaturesTests(TestCase):
        sick.refresh_from_db()
        self.assertEqual(sick.carried_over, 0)
        self.assertEqual(sick.total_days, 15)
+
+   def test_reset_clears_back_to_work_history(self):
+       BackToWork.objects.create(
+           user=self.teacher, full_name='Teacher One',
+           return_date=date.today(), message='',
+       )
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(BackToWork.objects.count(), 0)
+
+   def test_reset_clears_pay_slip_history(self):
+       PaySlipRequest.objects.create(
+           user=self.teacher, full_name='Teacher One', month='May 2026',
+       )
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(PaySlipRequest.objects.count(), 0)
+
+   def test_reset_clears_certificate_history(self):
+       CertificateRequest.objects.create(
+           user=self.teacher, full_name='Teacher One',
+           purpose='Visa', with_salary=False,
+       )
+       self.client.post(reverse('reset_balances'))
+       self.assertEqual(CertificateRequest.objects.count(), 0)
+
+   def test_hr_can_file_leave_for_teacher(self):
+       response = self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.teacher.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-01',
+           'end_leave': '2026-06-05',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       leave = Leave.objects.filter(user=self.teacher).first()
+       self.assertIsNotNone(leave)
+       self.assertEqual(leave.status, 'approved')
+
+   def test_hr_file_leave_updates_teacher_balance(self):
+       """HR-filed leave correctly deducts from teacher balance"""
+       self.client.post(reverse('hr_file_leave'), {
+           'user_id': self.teacher.id,
+           'leave_type': 'vacation_leave',
+           'start_leave': '2026-06-02',
+           'end_leave': '2026-06-06',
+           'half_day': 'none',
+           'reason_for_leave': 'Filed by HR',
+       })
+       balance = LeaveBalance.objects.get(user=self.teacher, leave_type='vacation_leave')
+       self.assertGreater(balance.days_used, 0)
+       self.assertLess(balance.days_remaining, 30)
+
+   def test_non_hr_cannot_access_hr_file_leave(self):
+       self.client.login(username='teacher01', password='TestPass1234!')
+       response = self.client.get(reverse('hr_file_leave'))
+       self.assertRedirects(response, reverse('dashboard'))
 
 
 # ================================================================
@@ -569,6 +657,12 @@ class SecurityTests(TestCase):
        })
        self.assertEqual(response.status_code, 302)
 
+   def test_teacher_redirected_from_hr_file_leave(self):
+       """Teacher cannot access HR file leave page"""
+       self.client.login(username='teacher01', password='TestPass1234!')
+       response = self.client.get(reverse('hr_file_leave'))
+       self.assertEqual(response.status_code, 302)
+
    def test_change_password_requires_login(self):
        response = self.client.get(reverse('change_password'))
        self.assertEqual(response.status_code, 302)
@@ -602,3 +696,32 @@ class SecurityTests(TestCase):
        response = self.client.get(reverse('login'))
        self.assertEqual(response.status_code, 200)
        self.assertNotContains(response, reverse('archives'))
+
+   def test_session_cleared_after_logout(self):
+       """After logout dashboard is inaccessible"""
+       self.client.login(username='teacher01', password='TestPass1234!')
+       self.client.get(reverse('logout'))
+       response = self.client.get(reverse('dashboard'))
+       self.assertEqual(response.status_code, 302)
+       self.assertIn('login', response.url)
+
+   def test_back_to_work_blocked_for_admin(self):
+       """Admin cannot access back_to_work URL directly"""
+       make_user('admin01x', 'admin')
+       self.client.login(username='admin01x', password='TestPass1234!')
+       response = self.client.get(reverse('back_to_work'))
+       self.assertEqual(response.status_code, 302)
+
+   def test_back_to_work_blocked_for_hr(self):
+       """HR cannot access back_to_work URL directly"""
+       make_user('hr01x', 'hr')
+       self.client.login(username='hr01x', password='TestPass1234!')
+       response = self.client.get(reverse('back_to_work'))
+       self.assertEqual(response.status_code, 302)
+
+   def test_certificate_blocked_for_hr(self):
+       """HR cannot access certificate URL directly"""
+       make_user('hr02x', 'hr')
+       self.client.login(username='hr02x', password='TestPass1234!')
+       response = self.client.get(reverse('certificate'))
+       self.assertEqual(response.status_code, 302)

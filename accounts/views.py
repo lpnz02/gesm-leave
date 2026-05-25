@@ -9,6 +9,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import HttpResponse
 from leaves.models import LeaveBalance
+from django.contrib.auth import update_session_auth_hash
 
 
 class Welcome(View):
@@ -32,7 +33,7 @@ class RegisterView(View):
             user.is_email_verified = False
             user.save()
 
-            # déclencher la logique département après save
+            # logic (HOD -> superior to Teacher)
             dept = form.cleaned_data.get('department')
             if dept and user.role == 'head_of_department':
                 dept.head = user
@@ -44,7 +45,7 @@ class RegisterView(View):
                 if dept.head:
                     user.superior = dept.head
                     user.save()
-
+            # verification link (UNIQUE TOKEN qent by email)
             verification_link = f"http://127.0.0.1:8000/verify-email/{user.email_verification_token}/"
             send_mail(
                 subject='Verify your email — GESM Leave Management',
@@ -58,7 +59,7 @@ class RegisterView(View):
 
 class LoginView(View):
     def get(self, request):
-        # si déjà connecté → rediriger vers dashboard
+        # if already logged in -> redirected to dashboard
         if request.user.is_authenticated:
             return redirect('dashboard')
         form = LoginForm()
@@ -72,18 +73,19 @@ class LoginView(View):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
-                return redirect('dashboard')  # ← dashboard, pas welcome
+                return redirect('dashboard')  # ← dashboard is first view they see
             else:
                 messages.error(request, 'Invalid username or password.')
         return render(request, 'accounts/login.html', {'form': form})
 
 
+# logout returns to login page
 class LogoutView(View):
     def get(self, request):
         logout(request)
         return redirect('login')
 
-
+# if account not verified yet : show pending page 
 class PendingView(View):
     def get(self, request):
         return render(request, 'accounts/pending.html')
@@ -100,7 +102,7 @@ class VerifyEmailView(View):
             user.is_email_verified = True
             user.save()
 
-            # notifier le HR — sans liens approve/reject, juste une info
+            # email sent to HR
             hr_users = User.objects.filter(role='hr', is_active=True)
             for hr in hr_users:
                 send_mail(
@@ -115,6 +117,9 @@ class VerifyEmailView(View):
             messages.error(request, 'Invalid verification link.')
             return redirect('register')
 
+# ===================================================================
+# Account Created : with correct balances for Teachers/HOD and Admins
+# ===================================================================
 
 class ApproveUserView(LoginRequiredMixin, View):
     def get(self, request, user_id):
@@ -148,7 +153,7 @@ class ApproveUserView(LoginRequiredMixin, View):
                     )
 
             elif user.role in ['teacher', 'head_of_department', 'head_of_school']:
-                # une seule balance globale de 30j
+
                 LeaveBalance.objects.get_or_create(
                     user=user,
                     leave_type='vacation_leave',
@@ -162,7 +167,7 @@ class ApproveUserView(LoginRequiredMixin, View):
 
             send_mail(
                 subject='Account Approved — GESM Leave Management',
-                message=f'Hello {user.first_name},\n\nYour account has been approved! You can now log in at:\nhttp://127.0.0.1:8000/login/\n\nGESM Leave Management',
+                message=f'Hello {user.first_name},\n\nYour account has been approved! You can now log in \nGESM Leave Management',
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[user.email],
             )
@@ -170,6 +175,11 @@ class ApproveUserView(LoginRequiredMixin, View):
 
         except User.DoesNotExist:
             return HttpResponse("User not found.")
+        
+
+# =========================================
+# Account Rejected : email sent to Employee
+# =========================================
 
 class RejectUserView(LoginRequiredMixin, View):
     def get(self, request, user_id):
@@ -193,7 +203,9 @@ class RejectUserView(LoginRequiredMixin, View):
             return HttpResponse("User not found.")
         
 
-from django.contrib.auth import update_session_auth_hash
+# ================================================================
+# NEW FEATURE : once logged in can change password and/or username 
+# ================================================================
 
 class ChangePasswordView(LoginRequiredMixin, View):
     def get(self, request):
@@ -205,7 +217,6 @@ class ChangePasswordView(LoginRequiredMixin, View):
         new_password1 = request.POST.get('new_password1', '').strip()
         new_password2 = request.POST.get('new_password2', '').strip()
 
-        # changement username indépendant
         if new_username and new_username != request.user.username:
             if User.objects.filter(username=new_username).exclude(id=request.user.id).exists():
                 messages.error(request, 'This username is already taken.')
@@ -214,7 +225,6 @@ class ChangePasswordView(LoginRequiredMixin, View):
             request.user.save()
             messages.success(request, 'Username updated successfully!')
 
-        # changement mot de passe — seulement si au moins un champ rempli
         if current_password or new_password1 or new_password2:
             if not current_password:
                 messages.error(request, 'Please enter your current password.')

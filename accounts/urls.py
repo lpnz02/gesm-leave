@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from django.contrib.auth import views as auth_views
 
 urlpatterns = [
     path('', views.Welcome.as_view(), name='welcome'),
@@ -11,9 +12,6 @@ urlpatterns = [
 path('reject-user/<int:user_id>/', views.RejectUserView.as_view(), name='reject_user'),
 path('change-password/', views.ChangePasswordView.as_view(), name='change_password'),
 ]
-
-
-from django.contrib.auth import views as auth_views
 
 urlpatterns += [
     path('password-reset/', 
