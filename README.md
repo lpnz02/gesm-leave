@@ -1,7 +1,7 @@
 GESM LEAVE MANAGEMENT SYSTEM
 =============================
-Django 5.2 — Python 3.10 — Bootstrap 5
-Developed during internship at GESM, Philippines — 2026
+Django 5.2 - Python 3.10 - Bootstrap 5
+Developed during internship at GESM, Philippines - 2026
 
 
 TABLE OF CONTENTS
@@ -54,30 +54,30 @@ Auth        : Django built-in + custom User model
 
 Prerequisites: Python 3.10+, pip, git
 
-# Clone the repo
+-- Clone the repo
 git clone https://github.com/your-repo/gesm-leave.git
 cd gesm-leave
 
-# Create virtual environment
+-- Create virtual environment
 python -m venv env
 
-# Activate (Windows)
+-- Activate (Windows)
 env\Scripts\activate
 
-# Activate (Mac/Linux)
+-- Activate (Mac/Linux)
 source env/bin/activate
 
-# Install dependencies
+-- Install dependencies
 pip install -r requirements.txt
 
-# Apply migrations
+-- Apply migrations
 python manage.py makemigrations
 python manage.py migrate
 
-# Create first HR account (see Section 5)
+-- Create first HR account (see Section 5)
 python manage.py shell
 
-# Run development server
+-- Run development server
 python manage.py runserver
 
 
@@ -94,7 +94,7 @@ SECRET_KEY=your-secret-key-here
 DEBUG=True
 ALLOWED_HOSTS=127.0.0.1,localhost
 
-# Leave empty for SQLite (default)
+Leave empty for SQLite (default) :
 DB_ENGINE=
 DB_NAME=
 DB_USER=
@@ -240,8 +240,8 @@ TEACHERS AND HOD:
     - If leave > remaining days -> AUTO-SPLIT into 2 entries:
         * Entry 1: paid portion (blue)
         * Entry 2: unpaid portion (red)
-    - If HOS mnually marks leave as Unpaid : remaining days ARE still deducted
-      (it counts against the quota — unpaid is just a visual/payroll flag)
+    - If HOS manually marks leave as Unpaid : remaining days ARE still deducted
+      (it counts against the quota - unpaid is just a visual/payroll flag)
     - HR can add extra remaining days at any time
     - Annual reset: back to 30 days, no carry-over
 
@@ -340,6 +340,5 @@ calendar colors and URL security. Already ran before final push.
 
 
 ================================================================
-Built during internship at German European School Manila — APRIL/MAY 2026
+Built during internship at German European School Manila - APRIL/MAY 2026
 ================================================================
-
