@@ -1,0 +1,247 @@
+DOCUMENTATION USED :
+
+https://docs.djangoproject.com/en/5.2/howto/deployment/
+
+https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/gunicorn/
+
+https://docs.gunicorn.org/en/stable/deploy.html
+
+https://www.digitalocean.com/community/tutorials/how-to-set-up-django-with-postgres-nginx-and-gunicorn-on-ubuntu
+
+https://www.postgresql.org/docs/
+
+
+Ubuntu Server + nginx + gunicorn + PostgreSQL
+
+
+STEP 1 - Update the server and install dependencies
+----------------------------------------------------
+Connect to server via SSH, then run:
+(installs Python 3, pip, git, nginx and PostgreSQL)
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv git nginx postgresql postgresql-contrib
+This installs Python 3, pip, git, nginx and PostgreSQL in one command.
+
+
+STEP 2 - Configure PostgreSQL
+------------------------------
+sudo -u postgres psql
+
+Then inside the PostgreSQL consoler:
+
+CREATE DATABASE gesm_leave;
+CREATE USER gesm_user WITH PASSWORD 'choose_a_strong_password';
+GRANT ALL PRIVILEGES ON DATABASE gesm_leave TO gesm_user;
+\q
+
+IMPORTANT: Write down the password needed it in Step 5 (DB_PASSWORD).
+
+
+STEP 3 - Clone the project from GitHub
+---------------------------------------
+
+STEP 4 - Create the Python virtual environment
+-----------------------------------------------
+cd ..../....
+python3 -m venv env
+source env/bin/activate
+pip install -r requirements.txt
+pip install gunicorn psycopg2-binary
+
+psycopg2-binary :e Python driver for PostgreSQL 
+
+STEP 5 - Create and fill the .env file
+----------------------------------------
+Create the .env file:
+
+SECRET_KEY=generate one at https://djecrety.ir
+DEBUG=False
+ALLOWED_HOSTS=your-domain.com,www.your-domain.com
+
+DB_ENGINE=django.db.backends.postgresql
+DB_NAME=gesm_leave
+DB_USER=gesm_user
+DB_PASSWORD=the_password_chosen_in_step2
+DB_HOST=localhost
+DB_PORT=5432
+
+EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+EMAIL_HOST=
+EMAIL_PORT=
+EMAIL_USE_TLS=
+EMAIL_HOST_USER=noreply@gesm.org
+EMAIL_HOST_PASSWORD=your_smtp_password
+DEFAULT_FROM_EMAIL=GESM Leave System <noreply@gesm.org>
+TIME_ZONE=Asia/Manila
+
+
+STEP 6 - Apply migrations and collect static files
+----------------------------------------------------
+cd /..../
+source env/bin/activate
+python manage.py makemigrations
+python manage.py migrate
+python manage.py collectstatic --noinput
+
+
+STEP 7 - Create the first HR account
+--------------------------------------
+python manage.py shell
+
+>>> from accounts.models import User
+>>> User.objects.create_user(
+...     username='hr_admin',
+...     email='test01@gesm.org',
+...     password='TemporaryPassword123!',
+...     role='hr',
+...     is_active=True,
+...     is_approved=True,
+...     is_email_verified=True,
+...     first_name='HR',
+...     last_name='Admin',
+... )
+>>> exit()
+
+
+STEP 8 - Configure gunicorn as a systemd service
+--------------------------------------------------
+Create the service file:
+
+sudo nano /etc/systemd/system/gunicorn.service
+
+Pastet:
+
+[Unit]
+Description=GESM Leave Management gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/gesm-leave
+EnvironmentFile=/var/www/gesm-leave/.env
+ExecStart=/var/www/gesm-leave/env/bin/gunicorn \
+          --workers 3 \
+          --bind unix:/run/gunicorn.sock \
+          hrapp.wsgi:application
+
+[Install]
+WantedBy=multi-user.target
+
+Save and run:
+
+sudo systemctl daemon-reload
+sudo systemctl start gunicorn
+sudo systemctl enable gunicorn
+sudo systemctl status gunicorn
+
+"active (running)" in green 
+
+
+STEP 9 - Configure nginx
+--------------------------
+the nginx config file:
+
+sudo nano /etc/nginx/sites-available/gesm-leave
+
+Paste :
+
+server {
+    listen 80;
+    server_name your-domain.com www.your-domain.com;
+
+    location = /favicon.ico { access_log off; log_not_found off; }
+
+    location /static/ {
+        root /var/www/gesm-leave;
+    }
+
+    location /media/ {
+        root /var/www/gesm-leave;
+    }
+
+    location / {
+        include proxy_params;
+        proxy_pass http://unix:/run/gunicorn.sock;
+    }
+}
+
+Then run:
+
+sudo ln -s /etc/nginx/sites-available/gesm-leave /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+sudo ufw allow 'Nginx Full'
+
+
+STEP 10 - Configure HTTPS with Let's Encrypt 
+-----------------------------------------------------
+Not sure about this
+
+
+STEP 11 - Verify everything is working
+----------------------------------------
+sudo systemctl status gunicorn        -- check gunicorn is running
+sudo systemctl status nginx           -- check nginx is running
+sudo journalctl -u gunicorn -f        -- gunicorn logs in real time
+sudo tail -f /var/log/nginx/error.log -- nginx error logs
+python manage.py check --deploy       -- Django security check
+curl http://localhost                  -- test server response locally
+
+
+
+STEP 12 - How to update the app (if future changes are made)
+--------------------------------------------------------------
+cd /var/www/gesm-leave
+git pull origin main
+source env/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
+python manage.py collectstatic --noinput
+sudo systemctl restart gunicorn
+
+
+
+COMMON PROBLEMS AND SOLUTIONS (FROM FORUM ONLINE) 
+------------------------------
+
+502 Bad Gateway
+-> gunicorn is not running
+-> sudo systemctl restart gunicorn
+
+Static files (CSS) not loading
+-> python manage.py collectstatic --noinput
+-> sudo systemctl restart nginx
+
+Permission denied on socket
+-> sudo chown www-data:www-data /run/gunicorn.sock
+
+Migration error
+-> python manage.py showmigrations
+-> python manage.py migrate --run-syncdb
+
+Emails not sending
+-> Check EMAIL_HOST and EMAIL_HOST_PASSWORD in .env
+
+ALLOWED_HOSTS error
+-> Add your domain or IP to ALLOWED_HOSTS in .env
+
+500 Internal Server Error
+-> sudo journalctl -u gunicorn -f to see the exact error
+
+
+USEFUL COMMANDS TO CHECK THE SERVER (FROM FORUM ONLINE)
+-------------------------------------
+python --version          -- check Python version
+pip --version             -- check pip version
+git --version             -- check git version
+psql --version            -- check PostgreSQL version
+free -h                   -- check available RAM
+df -h                     -- check disk space
+nproc                     -- check number of CPUs
+ps aux | grep gunicorn    -- check gunicorn processes
+
+
+GitHub : https://github.com/lpnz02/gesm-leave
+Stack  : Django 5.2 / Python 3.10 / PostgreSQL / Bootstrap 5
