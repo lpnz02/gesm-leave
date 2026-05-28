@@ -25,6 +25,9 @@ from django.contrib.auth import update_session_auth_hash
 from django.contrib import messages
 from accounts.models import User, Department
 from itertools import chain
+from django.core.paginator import Paginator
+from django.utils import timezone as tz
+
 # ========================================================================================================================================
 # Different views for dashboard : 
 # class DashboardView(LoginRequiredMixin, View):
@@ -253,7 +256,14 @@ class DashboardView(LoginRequiredMixin, View):
 
         elif user.role == 'hr':
 
-            all_leaves = Leave.objects.filter(user__isnull=False).exclude(user__role='head_of_admin')
+            all_leaves_qs = Leave.objects.filter(
+                user__isnull=False
+            ).exclude(user__role='head_of_admin').order_by('-created_at')
+
+            paginator = Paginator(all_leaves_qs, 25)
+            page_number = request.GET.get('page')
+            all_leaves = paginator.get_page(page_number)
+
             all_users = User.objects.exclude(role__in=['hr', 'head_of_admin'])
             pending_users = User.objects.filter(is_active=False, is_email_verified=True)
 
@@ -683,118 +693,130 @@ class DeleteLeaveView(LoginRequiredMixin, View):
         leave.delete()
         return redirect('dashboard')
 
-
 class UserDetailView(LoginRequiredMixin, View):
-    def get(self, request, user_id):
-        allowed = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin']
-        if request.user.role not in allowed:
-            return redirect('dashboard')
+   def get(self, request, user_id):
+       allowed = ['hr', 'head_of_department', 'head_of_school', 'head_of_admin']
+       if request.user.role not in allowed:
+           return redirect('dashboard')
 
-        target_user = User.objects.get(id=user_id)
-        leaves = Leave.objects.filter(user=target_user)
-        balances = LeaveBalance.objects.filter(user=target_user)
+       target_user = User.objects.get(id=user_id)
+       leaves = Leave.objects.filter(user=target_user)
+       balances = LeaveBalance.objects.filter(user=target_user)
 
-        leave_summary = []
-        total_days_used = 0
-        SICK_TYPES = ['sick_leave']
-        NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
+       leave_summary = []
+       total_days_used = 0
+       total_unpaid = 0
+       SICK_TYPES = ['sick_leave']
+       NO_LIMIT_TYPES = ['maternity_paternity_leave', 'others']
 
-        if target_user.role in ['teacher', 'head_of_department']:
-            sick_used = 0
-            special_used = 0
+       if target_user.role in ['teacher', 'head_of_department']:
+           sick_used = 0
+           special_used = 0
 
-            balance = LeaveBalance.objects.filter(
-                user=target_user,
-                leave_type='vacation_leave'
-            ).first()
-            total = float(balance.total_days) if balance else 30
-            remaining = float(balance.days_remaining) if balance else 30
+           balance = LeaveBalance.objects.filter(
+               user=target_user,
+               leave_type='vacation_leave'
+           ).first()
+           total = float(balance.total_days) if balance else 30
+           remaining = float(balance.days_remaining) if balance else 30
 
-            for leave in leaves.filter(status='approved'):
-                if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                    days = 0.5
-                else:
-                    days = 0
-                    current = leave.start_leave
-                    while current <= leave.end_leave:
-                        if current.weekday() < 5:
-                            days += 1
-                        current += timedelta(days=1)
+           for leave in leaves.filter(status='approved'):
+               if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                   days = 0.5
+               else:
+                   days = 0
+                   current = leave.start_leave
+                   while current <= leave.end_leave:
+                       if current.weekday() < 5:
+                           days += 1
+                       current += timedelta(days=1)
 
-                if leave.leave_type in SICK_TYPES:
-                    sick_used += days
-                else:
-                    special_used += days
+               if leave.leave_type in SICK_TYPES:
+                   sick_used += days
+               else:
+                   special_used += days
 
-            days_used = sick_used + special_used
-            total_days_used = days_used
+           days_used = sick_used + special_used
+           total_days_used = days_used
 
-            real_unpaid = max(0, days_used - total)
+           real_unpaid = max(0, days_used - total)
 
-            if real_unpaid > 0:
-                special_unpaid = min(real_unpaid, special_used)
-                sick_unpaid = max(0, real_unpaid - special_unpaid)
-            else:
-                sick_unpaid = 0
-                special_unpaid = 0
+           if real_unpaid > 0:
+               special_unpaid = min(real_unpaid, special_used)
+               sick_unpaid = max(0, real_unpaid - special_unpaid)
+           else:
+               sick_unpaid = 0
+               special_unpaid = 0
 
-            leave_summary = [
-                {
-                    'type': 'Sick Leave',
-                    'used': sick_used,
-                    'unpaid': sick_unpaid,
-                    'category': 'sick',
-                    'remaining': remaining,  
-                    'total': total,          
-                },
-                {
-                    'type': 'Special Leave',
-                    'used': special_used,
-                    'unpaid': special_unpaid,
-                    'category': 'special',
-                    'remaining': remaining,  
-                    'total': total,         
-                },
-            ]
+           total_unpaid = real_unpaid
 
-        elif target_user.role == 'admin':
-            for balance in balances:
-                days_used = 0
-                for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
-                    if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
-                        days_used += 0.5
-                    else:
-                        current = leave.start_leave
-                        while current <= leave.end_leave:
-                            if current.weekday() < 5:
-                                days_used += 1
-                            current += timedelta(days=1)
+           leave_summary = [
+               {
+                   'type': 'Sick Leave',
+                   'used': sick_used,
+                   'unpaid': sick_unpaid,
+                   'category': 'sick',
+                   'remaining': remaining,
+                   'total': total,
+               },
+               {
+                   'type': 'Special Leave',
+                   'used': special_used,
+                   'unpaid': special_unpaid,
+                   'category': 'special',
+                   'remaining': remaining,
+                   'total': total,
+               },
+           ]
 
-                total_days_used += days_used
-                no_limit = balance.total_days == 0 or balance.leave_type in NO_LIMIT_TYPES
+       elif target_user.role == 'admin':
+           for balance in balances:
+               days_used = 0
+               for leave in leaves.filter(status='approved', leave_type=balance.leave_type):
+                   if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                       days_used += 0.5
+                   else:
+                       current = leave.start_leave
+                       while current <= leave.end_leave:
+                           if current.weekday() < 5:
+                               days_used += 1
+                           current += timedelta(days=1)
 
-                leave_summary.append({
-                    'type': balance.leave_type.replace('_', ' ').title(),
-                    'used': days_used,
-                    'total': None if no_limit else balance.total_days,
-                    'remaining': None if no_limit else balance.days_remaining,
-                    'carried_over': balance.carried_over,
-                    'unpaid': False if no_limit else balance.days_remaining < 0,
-                    'category': None,
-                })
+               total_days_used += days_used
+               no_limit = balance.total_days == 0 or balance.leave_type in NO_LIMIT_TYPES
 
-        total_unpaid = 0
-        if target_user.role in ['teacher', 'head_of_department']:
-            total_unpaid = real_unpaid
+               leave_summary.append({
+                   'type': balance.leave_type.replace('_', ' ').title(),
+                   'used': days_used,
+                   'total': None if no_limit else balance.total_days,
+                   'remaining': None if no_limit else balance.days_remaining,
+                   'carried_over': balance.carried_over,
+                   'unpaid': False if no_limit else balance.days_remaining < 0,
+                   'category': None,
+               })
 
-        return render(request, 'dashboard/user_detail.html', {
-            'target_user': target_user,
-            'leaves': leaves,
-            'leave_summary': leave_summary,
-            'total_days_used': total_days_used,
-            'user_role': target_user.role,
-            'total_unpaid': total_unpaid,
-        })
+       elif target_user.role == 'hr':
+           
+           for leave in leaves.filter(status='approved'):
+               if leave.half_day in ['morning', 'afternoon'] and leave.start_leave == leave.end_leave:
+                   total_days_used += 0.5
+               else:
+                   current = leave.start_leave
+                   while current <= leave.end_leave:
+                       if current.weekday() < 5:
+                           total_days_used += 1
+                       current += timedelta(days=1)
+
+
+       return render(request, 'dashboard/user_detail.html', {
+           'target_user': target_user,
+           'leaves': leaves,
+           'leave_summary': leave_summary,
+           'total_days_used': total_days_used,
+           'user_role': target_user.role,
+           'total_unpaid': total_unpaid,
+       })
+
     
 class ExportLeavesView(LoginRequiredMixin, View):
     def get(self, request):
